@@ -1,0 +1,119 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AssetAttributeDataType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+  ARRAY
+  OBJECT
+}
+
+model Asset {
+  id                        String                     @id @default(uuid()) @db.Uuid
+  name                      String                     @db.VarChar(255)
+  description               String?                    @db.Text
+  parentAssetId             String?                    @db.Uuid
+  assetAttributeTemplateId  String?                    @db.Uuid
+  createdAt                 DateTime                   @default(now()) @db.Timestamp(6)
+  updatedAt                 DateTime                   @updatedAt @db.Timestamp(6)
+
+  parentAsset               Asset?                     @relation("AssetHierarchy", fields: [parentAssetId], references: [id])
+  children                  Asset[]                    @relation("AssetHierarchy")
+  assetAttributeTemplate    AssetAttributeTemplate?    @relation(fields: [assetAttributeTemplateId], references: [id])
+  attributes                AssetAttribute[]
+
+  @@map("assets")
+}
+
+model AssetAttributeTemplate {
+  id           String                        @id @default(uuid()) @db.Uuid
+  name         String                        @db.VarChar(255)
+  description  String?                       @db.Text
+  createdAt    DateTime                      @default(now()) @db.Timestamp(6)
+  updatedAt    DateTime                      @updatedAt @db.Timestamp(6)
+
+  items        AssetAttributeTemplateItem[]
+  assets       Asset[]
+
+  @@map("asset_attribute_templates")
+}
+
+model AssetAttributeTemplateItem {
+  id                       String                   @id @default(uuid()) @db.Uuid
+  assetAttributeTemplateId String                   @db.Uuid
+  name                     String                   @db.VarChar(255)
+  description              String?                  @db.Text
+  dataType                 AssetAttributeDataType
+  unit                     String?                  @db.VarChar(255)
+  defaultValue             Json?                    @db.JsonB
+  createdAt                DateTime                 @default(now()) @db.Timestamp(6)
+  updatedAt                DateTime                 @updatedAt @db.Timestamp(6)
+
+  assetAttributeTemplate   AssetAttributeTemplate   @relation(fields: [assetAttributeTemplateId], references: [id])
+  assetAttributes          AssetAttribute[]
+
+  @@map("asset_attribute_template_items")
+}
+
+model AssetAttribute {
+  id            String                     @id @default(uuid()) @db.Uuid
+  assetId       String                     @db.Uuid
+  templateItemId String                    @db.Uuid
+  value         Json?                      @db.JsonB
+  createdAt     DateTime                   @default(now()) @db.Timestamp(6)
+  updatedAt     DateTime                   @updatedAt @db.Timestamp(6)
+
+  asset         Asset                      @relation(fields: [assetId], references: [id])
+  templateItem  AssetAttributeTemplateItem @relation(fields: [templateItemId], references: [id])
+  historian     AssetAttributeHistorian[]
+
+  @@unique([assetId, templateItemId])
+  @@map("asset_attributes")
+}
+
+model AssetAttributeHistorian {
+  assetAttributeId String        @db.Uuid
+  ts               DateTime      @db.Timestamptz(6)
+  value            Json?         @db.JsonB
+
+  assetAttribute   AssetAttribute @relation(fields: [assetAttributeId], references: [id])
+
+  @@id([assetAttributeId, ts])
+  @@map("asset_attribute_historian")
+}
+
+model AnalysisScript {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  script      String   @db.Text
+  inputs      Json?    @db.JsonB
+  templateId  String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamp(6)
+  updatedAt   DateTime @updatedAt @db.Timestamp(6)
+
+  template    AnalysisScriptTemplate? @relation(fields: [templateId], references: [id])
+
+  @@map("analysis_scripts")
+}
+
+model AnalysisScriptTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  script      String   @db.Text
+  inputs      Json?    @db.JsonB
+  createdAt   DateTime @default(now()) @db.Timestamp(6)
+  updatedAt   DateTime @updatedAt @db.Timestamp(6)
+
+  scripts     AnalysisScript[]
+
+  @@map("analysis_script_templates")
+}

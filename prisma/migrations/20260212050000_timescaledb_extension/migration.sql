@@ -1,0 +1,1 @@
+-- no-op (extension already installed on database)
