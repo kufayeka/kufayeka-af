@@ -32,12 +32,14 @@ Body (JSON):
 ### Delete asset
 DELETE http://localhost:3000/api/assets/<assetId>
 
-### Get asset by path (hierarchy + attributes)
+### Get asset by path (attributes + children)
 GET http://localhost:3000/api/assets/path?path=Plant%20A.Pump-01
 
-Returns:
-- asset: asset detail
-- hierarchy: array of asset nodes from root to target
+Optional:
+- includeChildren=false (return only the target asset, no recursive children)
+
+Example:
+GET http://localhost:3000/api/assets/path?path=Plant%20A.Pump-01&includeChildren=false
 
 ## Asset Attributes
 ### Bulk upsert attributes for asset

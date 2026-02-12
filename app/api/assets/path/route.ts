@@ -7,6 +7,7 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const path = searchParams.get("path");
+  const includeChildren = searchParams.get("includeChildren") !== "false";
 
   if (!path) {
     return NextResponse.json({ error: "path is required" }, { status: 400 });
@@ -14,11 +15,9 @@ export async function GET(request: Request) {
 
   try {
     const parts = path.split(".").filter(Boolean);
-    const { asset, hierarchy } = await resolveAssetPath(parts);
-    const assetIds = hierarchy.map((item) => item.id);
+    const { asset } = await resolveAssetPath(parts);
 
     const assets = await prisma.asset.findMany({
-      where: { id: { in: assetIds } },
       include: {
         attributes: {
           include: { templateItem: true },
@@ -28,13 +27,33 @@ export async function GET(request: Request) {
     });
 
     const assetMap = new Map(assets.map((item) => [item.id, item]));
-    const orderedHierarchy = hierarchy
-      .map((item) => assetMap.get(item.id))
-      .filter(Boolean);
+    const childrenMap = new Map<string | null, string[]>();
+    assets.forEach((item) => {
+      const key = item.parentAssetId ?? null;
+      const list = childrenMap.get(key) ?? [];
+      list.push(item.id);
+      childrenMap.set(key, list);
+    });
+
+    const buildTree = (assetId: string): unknown => {
+      const node = assetMap.get(assetId);
+      if (!node) {
+        return null;
+      }
+      if (!includeChildren) {
+        return node;
+      }
+      const childIds = childrenMap.get(assetId) ?? [];
+      return {
+        ...node,
+        children: childIds
+          .map((childId) => buildTree(childId))
+          .filter(Boolean),
+      };
+    };
 
     return NextResponse.json({
-      asset: assetMap.get(asset.id) ?? null,
-      hierarchy: orderedHierarchy,
+      asset: buildTree(asset.id),
     });
   } catch (error) {
     return NextResponse.json(

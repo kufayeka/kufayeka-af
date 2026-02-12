@@ -1,5 +1,6 @@
 const { parentPort } = require("worker_threads");
 const ivm = require("isolated-vm");
+const { installMacros } = require("./_macros.cjs");
 
 const isolate = new ivm.Isolate({ memoryLimit: 64 });
 const contextPromise = isolate.createContext();
@@ -38,8 +39,9 @@ async function runScript({ script, bindings, timeout }) {
 }
 
 parentPort.on("message", async (payload) => {
-  const { id, script, bindings, timeout } = payload;
+  const { id, script, bindings, macroData, timeout } = payload;
   try {
+    await installMacros({ isolate, context: await getContext(), macroData });
     const result = await runScript({ script, bindings, timeout });
     parentPort.postMessage({ id, result });
   } catch (error) {

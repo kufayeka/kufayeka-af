@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "../../../lib/prisma";
 import { buildVariableBindings } from "./_bindings";
 import { runInPool } from "./_pool";
+import { buildMacroData } from "./_macro-data";
 
 export const runtime = "nodejs";
 
@@ -39,12 +40,13 @@ export async function GET(request: Request) {
       (script.template?.inputs as unknown[]) ??
       [];
     const bindings = await buildVariableBindings(inputs as never[]);
+    const macroData = await buildMacroData();
 
     const effectiveScript = script.templateId
       ? script.template?.script ?? script.script
       : script.script;
     const wrapped = `(function(){\n${effectiveScript}\n})()`;
-    const result = await runInPool(wrapped, bindings);
+    const result = await runInPool(wrapped, bindings, macroData);
 
     return NextResponse.json({
       message: "success",
