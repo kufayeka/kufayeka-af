@@ -37,6 +37,16 @@ export type MacroData = {
     value: unknown | null;
     path: string;
   }>;
+  attributesByAssetPath: Record<string, Array<{
+    assetId: string;
+    templateItemId: string;
+    assetAttributeId: string;
+    name: string;
+    dataType: string;
+    unit: string | null;
+    value: unknown | null;
+    path: string;
+  }>>;
 };
 
 function buildAssetPath(assetId: string, map: Map<string, AssetRow>) {
@@ -61,6 +71,7 @@ export async function buildMacroData(): Promise<MacroData> {
   const assetMap = new Map(assets.map((asset) => [asset.id, asset as AssetRow]));
   const assetsByPath: MacroData["assetsByPath"] = {};
   const attributesByPath: MacroData["attributesByPath"] = {};
+  const attributesByAssetPath: MacroData["attributesByAssetPath"] = {};
 
   assets.forEach((asset) => {
     const path = buildAssetPath(asset.id, assetMap);
@@ -71,6 +82,8 @@ export async function buildMacroData(): Promise<MacroData> {
       parentAssetId: asset.parentAssetId ?? null,
       assetAttributeTemplateId: asset.assetAttributeTemplateId ?? null,
     };
+
+    attributesByAssetPath[path] = [];
 
     (asset.attributes ?? []).forEach((attribute) => {
       const attributePath = `${path}.${attribute.templateItem.name}`;
@@ -84,8 +97,10 @@ export async function buildMacroData(): Promise<MacroData> {
         value: attribute.value ?? null,
         path: attributePath,
       };
+
+      attributesByAssetPath[path].push(attributesByPath[attributePath]);
     });
   });
 
-  return { assetsByPath, attributesByPath };
+  return { assetsByPath, attributesByPath, attributesByAssetPath };
 }

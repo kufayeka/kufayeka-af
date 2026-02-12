@@ -3,6 +3,7 @@ import { prisma } from "../../../lib/prisma";
 import { buildVariableBindings } from "./_bindings";
 import { runInPool } from "./_pool";
 import { buildMacroData } from "./_macro-data";
+import { parseAttributeValue, resolveTagPath } from "../analysis/_utils";
 
 export const runtime = "nodejs";
 
@@ -46,7 +47,30 @@ export async function GET(request: Request) {
       ? script.template?.script ?? script.script
       : script.script;
     const wrapped = `(function(){\n${effectiveScript}\n})()`;
-    const result = await runInPool(wrapped, bindings, macroData);
+    const { result, writes } = await runInPool(wrapped, bindings, macroData);
+
+    if (writes.length > 0) {
+      await Promise.all(
+        writes.map(async (write) => {
+          const resolved = await resolveTagPath(write.path);
+          const parsedValue = parseAttributeValue(resolved.dataType, write.value);
+          await prisma.assetAttribute.upsert({
+            where: {
+              assetId_templateItemId: {
+                assetId: resolved.assetId,
+                templateItemId: resolved.templateItemId,
+              },
+            },
+            update: { value: parsedValue },
+            create: {
+              assetId: resolved.assetId,
+              templateItemId: resolved.templateItemId,
+              value: parsedValue,
+            },
+          });
+        })
+      );
+    }
 
     return NextResponse.json({
       message: "success",

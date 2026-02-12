@@ -1,15 +1,70 @@
 async function installMacros({ isolate, context, macroData }) {
   const global = context.global;
   await global.set("__macroData", macroData, { copy: true });
+  await global.set("__macroWrites", [], { copy: true });
 
-  const setupScript = await isolate.compileScript(`
-    globalThis.Asset = {
-      get: (path) => __macroData.assetsByPath[path] ?? null,
-    };
-    globalThis.Attribute = {
-      get: (path) => __macroData.attributesByPath[path] ?? null,
-    };
-  `);
+  const setupSource = [
+    "if (!globalThis.__macroInitialized) {",
+    "  globalThis.__macroInitialized = true;",
+    "  const toRegex = (pattern) => {",
+    "    const escaped = String(pattern)",
+    "      .replace(/[.+^$()|[\\]\\\\]/g, '\\\\$&')",
+    "      .replace(/\\*/g, '.*')",
+    "      .replace(/\\?/g, '.')",
+    "    return new RegExp('^' + escaped + '$', 'i');",
+    "  };",
+    "  globalThis.Asset = {",
+    "    get: (path) => __macroData.assetsByPath[path] ?? null,",
+    "    list: () => Object.values(__macroData.assetsByPath),",
+    "    query: (pattern) => {",
+    "      const regex = toRegex(pattern);",
+    "      return Object.entries(__macroData.assetsByPath)",
+    "        .filter(([path]) => regex.test(path))",
+    "        .map(([, asset]) => asset);",
+    "    },",
+    "    getHierarchy: (path) => {",
+    "      if (!path) return [];",
+    "      const parts = String(path).split('.').filter(Boolean);",
+    "      const result = [];",
+    "      for (let i = 0; i < parts.length; i += 1) {",
+    "        const currentPath = parts.slice(0, i + 1).join('.');",
+    "        const asset = __macroData.assetsByPath[currentPath];",
+    "        if (!asset) break;",
+    "        result.push({ path: currentPath, ...asset });",
+    "      }",
+    "      return result;",
+    "    },",
+    "  };",
+    "  globalThis.Attribute = {",
+    "    get: (path) => __macroData.attributesByPath[path] ?? null,",
+    "    list: (assetPath) => {",
+    "      if (!assetPath) {",
+    "        return Object.values(__macroData.attributesByPath);",
+    "      }",
+    "      return __macroData.attributesByAssetPath[assetPath] ?? [];",
+    "    },",
+    "    getMany: (paths) => (Array.isArray(paths) ? paths : []).map((path) => ({",
+    "      path,",
+    "      value: __macroData.attributesByPath[path] ?? null,",
+    "    })),",
+    "    set: (path, value) => {",
+    "      __macroWrites.push({ path, value });",
+    "      return true;",
+    "    },",
+    "    setMany: (items) => {",
+    "      if (!Array.isArray(items)) return 0;",
+    "      items.forEach((item) => {",
+    "        if (item && item.path) {",
+    "          __macroWrites.push({ path: item.path, value: item.value });",
+    "        }",
+    "      });",
+    "      return items.length;",
+    "    },",
+    "  };",
+    "}",
+  ].join("\n");
+
+  const setupScript = await isolate.compileScript(setupSource);
 
   await setupScript.run(context);
 }

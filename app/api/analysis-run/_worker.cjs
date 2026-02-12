@@ -31,19 +31,22 @@ async function runScript({ script, bindings, timeout }) {
     copy: true,
   });
 
+  const writes = await global.get("__macroWrites", { copy: true });
+  await global.set("__macroWrites", [], { copy: true });
+
   for (const key of bindingKeys) {
     await global.delete(key);
   }
 
-  return result;
+  return { result, writes };
 }
 
 parentPort.on("message", async (payload) => {
   const { id, script, bindings, macroData, timeout } = payload;
   try {
     await installMacros({ isolate, context: await getContext(), macroData });
-    const result = await runScript({ script, bindings, timeout });
-    parentPort.postMessage({ id, result });
+    const payloadResult = await runScript({ script, bindings, timeout });
+    parentPort.postMessage({ id, result: payloadResult });
   } catch (error) {
     parentPort.postMessage({
       id,

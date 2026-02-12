@@ -1,16 +1,18 @@
 import { Worker } from "worker_threads";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+import { join } from "path";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const WORKER_PATH = join(__dirname, "_worker.cjs");
+const WORKER_PATH = join(
+  process.cwd(),
+  "app",
+  "api",
+  "analysis-run",
+  "_worker.cjs"
+);
 const POOL_SIZE = Number(process.env.ANALYSIS_POOL_SIZE ?? 10);
 const DEFAULT_TIMEOUT = Number(process.env.ANALYSIS_TIMEOUT_MS ?? 1000);
 
 type PendingTask = {
-  resolve: (value: unknown) => void;
+  resolve: (value: { result: unknown; writes: Array<{ path: string; value: unknown }> }) => void;
   reject: (error: Error) => void;
 };
 
@@ -27,7 +29,13 @@ const workers: WorkerWrapper[] = Array.from({ length: POOL_SIZE }, () => {
   const worker = new Worker(WORKER_PATH);
   const wrapper: WorkerWrapper = { worker, busy: false };
 
-  worker.on("message", (message: { id: number; result?: unknown; error?: string }) => {
+  worker.on(
+    "message",
+    (message: {
+      id: number;
+      result?: { result: unknown; writes?: Array<{ path: string; value: unknown }> };
+      error?: string;
+    }) => {
     const task = pending.get(message.id);
     if (!task) {
       return;
@@ -37,7 +45,11 @@ const workers: WorkerWrapper[] = Array.from({ length: POOL_SIZE }, () => {
     if (message.error) {
       task.reject(new Error(message.error));
     } else {
-      task.resolve(message.result);
+      const payload = message.result ?? { result: null, writes: [] };
+      task.resolve({
+        result: payload.result ?? null,
+        writes: payload.writes ?? [],
+      });
     }
     runNext();
   });
