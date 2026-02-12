@@ -20,22 +20,38 @@ export async function POST(request: Request) {
     templateId?: string | null;
   };
 
-  if (!body.name || !body.script) {
+  if (!body.name) {
     return NextResponse.json(
-      { error: "Name and script are required" },
+      { error: "Name is required" },
       { status: 400 }
     );
   }
 
-  const script = await prisma.analysisScript.create({
+  let script = body.script ?? "";
+  if (!script && body.templateId) {
+    const template = await prisma.analysisScriptTemplate.findUnique({
+      where: { id: body.templateId },
+      select: { script: true },
+    });
+    script = template?.script ?? "";
+  }
+
+  if (!script) {
+    return NextResponse.json(
+      { error: "Script is required when no template is selected" },
+      { status: 400 }
+    );
+  }
+
+  const created = await prisma.analysisScript.create({
     data: {
       name: body.name,
       description: body.description ?? null,
-      script: body.script,
+      script,
       inputs: body.inputs ?? null,
       templateId: body.templateId ?? null,
     },
   });
 
-  return NextResponse.json({ script }, { status: 201 });
+  return NextResponse.json({ script: created }, { status: 201 });
 }

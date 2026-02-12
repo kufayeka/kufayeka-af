@@ -16,18 +16,37 @@ export async function PUT(
     templateId?: string | null;
   };
 
-  const script = await prisma.analysisScript.update({
+  const data: {
+    name?: string;
+    description?: string | null;
+    script?: string;
+    inputs?: unknown;
+    templateId?: string | null;
+  } = {
+    name: body.name,
+    description: body.description ?? null,
+    inputs: body.inputs ?? null,
+    templateId: body.templateId ?? null,
+  };
+
+  if (body.script !== undefined) {
+    data.script = body.script;
+  }
+
+  if (!data.script && data.templateId) {
+    const template = await prisma.analysisScriptTemplate.findUnique({
+      where: { id: data.templateId },
+      select: { script: true },
+    });
+    data.script = template?.script ?? data.script;
+  }
+
+  const updated = await prisma.analysisScript.update({
     where: { id },
-    data: {
-      name: body.name,
-      description: body.description ?? null,
-      script: body.script ?? "",
-      inputs: body.inputs ?? null,
-      templateId: body.templateId ?? null,
-    },
+    data,
   });
 
-  return NextResponse.json({ script });
+  return NextResponse.json({ script: updated });
 }
 
 export async function DELETE(
