@@ -109,5 +109,21 @@ export async function POST(request: Request) {
     },
   });
 
+  const assets = await prisma.asset.findMany({
+    where: { assetAttributeTemplateId: body.assetAttributeTemplateId },
+    select: { id: true },
+  });
+
+  if (assets.length > 0) {
+    await prisma.assetAttribute.createMany({
+      data: assets.map((asset) => ({
+        assetId: asset.id,
+        templateItemId: item.id,
+        value: parsedDefaultValue ?? null,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
   return NextResponse.json({ item }, { status: 201 });
 }
