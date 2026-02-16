@@ -14,6 +14,7 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   CssBaseline,
   Divider,
   IconButton,
@@ -41,11 +42,13 @@ const CodeMirror = dynamic(() => import("@uiw/react-codemirror"), {
 type AnalysisInputRow = {
   id: string;
   variableName: string;
-  sourceType: "attribute" | "constant";
+  sourceType: "attribute" | "constant" | "query" | "body";
   constantType: "number" | "boolean" | "string" | "array" | "object";
   attributePath: string | null;
   attributeKey?: string | null;
   constantValue: string | number | boolean;
+  paramKey?: string | null;
+  required?: boolean;
 };
 
 type ScriptTemplate = {
@@ -156,6 +159,8 @@ export default function AssetAnalysesTemplatePage() {
           attributePath: null,
           attributeKey: null,
           constantValue: "",
+          paramKey: null,
+          required: false,
         },
       ],
     }));
@@ -476,6 +481,9 @@ export default function AssetAnalysesTemplatePage() {
                           <TableCell sx={{ width: "18%" }}>Source</TableCell>
                           <TableCell sx={{ width: "20%" }}>Type</TableCell>
                           <TableCell>Value</TableCell>
+                          <TableCell align="center" sx={{ width: 90 }}>
+                            Required
+                          </TableCell>
                           <TableCell align="center" sx={{ width: 72 }}>
                             Action
                           </TableCell>
@@ -484,7 +492,7 @@ export default function AssetAnalysesTemplatePage() {
                       <TableBody>
                         {templateForm.inputs.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={5}>
+                            <TableCell colSpan={6}>
                               <Typography
                                 variant="body2"
                                 color="text.secondary"
@@ -523,7 +531,9 @@ export default function AssetAnalysesTemplatePage() {
                                     handleUpdateInput(index, {
                                       sourceType: event.target.value as
                                         | "attribute"
-                                        | "constant",
+                                        | "constant"
+                                        | "query"
+                                        | "body",
                                       attributePath:
                                         event.target.value === "attribute"
                                           ? input.attributePath
@@ -536,12 +546,19 @@ export default function AssetAnalysesTemplatePage() {
                                         event.target.value === "constant"
                                           ? input.constantValue
                                           : "",
+                                      paramKey:
+                                        event.target.value === "query" ||
+                                        event.target.value === "body"
+                                          ? input.paramKey ?? ""
+                                          : null,
                                     })
                                   }
                                   fullWidth
                                 >
                                   <MenuItem value="attribute">Attribute</MenuItem>
                                   <MenuItem value="constant">Constant</MenuItem>
+                                  <MenuItem value="query">HTTP Query</MenuItem>
+                                  <MenuItem value="body">Request Body</MenuItem>
                                 </TextField>
                               </TableCell>
                               <TableCell>
@@ -573,9 +590,13 @@ export default function AssetAnalysesTemplatePage() {
                                   <TextField
                                     select
                                     size="small"
-                                    label="Type"
-                                    aria-label="Constant type"
-                                    title="Constant type"
+                                    label={
+                                      input.sourceType === "constant"
+                                        ? "Constant type"
+                                        : "Data type"
+                                    }
+                                    aria-label="Data type"
+                                    title="Data type"
                                     value={input.constantType}
                                     onChange={(event) =>
                                       handleUpdateInput(index, {
@@ -595,98 +616,131 @@ export default function AssetAnalysesTemplatePage() {
                                 )}
                               </TableCell>
                               <TableCell>
-                                {input.sourceType === "attribute" ? (
-                                  <Autocomplete
-                                    options={attributeOptions}
-                                    value={
-                                      input.attributeKey
-                                        ? attributeOptions.find(
-                                            (option) =>
-                                              option.value ===
-                                              input.attributeKey
-                                          ) ?? null
-                                        : input.attributePath
-                                          ? attributeOptions.find(
-                                              (option) =>
-                                                option.path ===
-                                                input.attributePath
-                                            ) ?? null
-                                          : null
-                                    }
-                                    onChange={(_, value) =>
-                                      handleUpdateInput(index, {
-                                        attributePath: value?.path ?? null,
-                                        attributeKey: value?.value ?? null,
-                                      })
-                                    }
-                                    getOptionLabel={(option) => option.label}
-                                    isOptionEqualToValue={(option, value) =>
-                                      option.value === value.value
-                                    }
-                                    filterOptions={createFilterOptions({
-                                      ignoreAccents: true,
-                                      stringify: (option) =>
-                                        `${option.label} ${option.alias} ${option.dataType} ${option.unit}`,
-                                    })}
-                                    renderOption={(props, option) => {
-                                      const { key, ...rest } = props;
-                                      return (
-                                        <li key={key} {...rest}>
-                                          <Stack>
-                                            <Typography variant="body2">
-                                              {option.label}
-                                            </Typography>
-                                            <Typography variant="caption">
-                                              alias: {option.alias}
-                                            </Typography>
-                                            <Typography
-                                              variant="caption"
-                                              color="text.secondary"
-                                            >
-                                              {option.dataType} {option.unit || ""}
-                                            </Typography>
-                                          </Stack>
-                                        </li>
-                                      );
-                                    }}
-                                    renderInput={(params) => (
-                                      <TextField
-                                        {...params}
-                                        size="small"
-                                        label="Asset attribute"
-                                        aria-label="Asset attribute"
-                                        title="Asset attribute"
+                                {(() => {
+                                  if (input.sourceType === "attribute") {
+                                    return (
+                                      <Autocomplete
+                                        options={attributeOptions}
+                                        value={
+                                          input.attributeKey
+                                            ? attributeOptions.find(
+                                                (option) =>
+                                                  option.value ===
+                                                  input.attributeKey
+                                              ) ?? null
+                                            : input.attributePath
+                                              ? attributeOptions.find(
+                                                  (option) =>
+                                                    option.path ===
+                                                    input.attributePath
+                                                ) ?? null
+                                              : null
+                                        }
+                                        onChange={(_, value) =>
+                                          handleUpdateInput(index, {
+                                            attributePath: value?.path ?? null,
+                                            attributeKey: value?.value ?? null,
+                                          })
+                                        }
+                                        getOptionLabel={(option) => option.label}
+                                        isOptionEqualToValue={(option, value) =>
+                                          option.value === value.value
+                                        }
+                                        filterOptions={createFilterOptions({
+                                          ignoreAccents: true,
+                                          stringify: (option) =>
+                                            `${option.label} ${option.alias} ${option.dataType} ${option.unit}`,
+                                        })}
+                                        renderOption={(props, option) => {
+                                          const { key, ...rest } = props;
+                                          return (
+                                            <li key={key} {...rest}>
+                                              <Stack>
+                                                <Typography variant="body2">
+                                                  {option.label}
+                                                </Typography>
+                                                <Typography variant="caption">
+                                                  alias: {option.alias}
+                                                </Typography>
+                                                <Typography
+                                                  variant="caption"
+                                                  color="text.secondary"
+                                                >
+                                                  {option.dataType} {option.unit || ""}
+                                                </Typography>
+                                              </Stack>
+                                            </li>
+                                          );
+                                        }}
+                                        renderInput={(params) => (
+                                          <TextField
+                                            {...params}
+                                            size="small"
+                                            label="Asset attribute"
+                                            aria-label="Asset attribute"
+                                            title="Asset attribute"
+                                          />
+                                        )}
+                                        fullWidth
                                       />
-                                    )}
-                                    fullWidth
-                                  />
-                                ) : (
-                                  input.constantType === "boolean" ? (
-                                    <TextField
-                                      select
-                                      size="small"
-                                      label="Constant"
-                                      aria-label="Constant"
-                                      title="Constant"
-                                      value={
-                                        input.constantValue === true
-                                          ? "true"
-                                          : input.constantValue === false
-                                          ? "false"
-                                          : ""
-                                      }
-                                      onChange={(event) =>
-                                        handleUpdateInput(index, {
-                                          constantValue:
-                                            event.target.value === "true",
-                                        })
-                                      }
-                                      fullWidth
-                                    >
-                                      <MenuItem value="true">true</MenuItem>
-                                      <MenuItem value="false">false</MenuItem>
-                                    </TextField>
-                                  ) : (
+                                    );
+                                  }
+
+                                  if (
+                                    input.sourceType === "query" ||
+                                    input.sourceType === "body"
+                                  ) {
+                                    return (
+                                      <TextField
+                                        size="small"
+                                        label={
+                                          input.sourceType === "query"
+                                            ? "Query Key"
+                                            : "Body Key"
+                                        }
+                                        aria-label="Request key"
+                                        title="Request key"
+                                        value={input.paramKey ?? ""}
+                                        onChange={(event) =>
+                                          handleUpdateInput(index, {
+                                            paramKey: event.target.value,
+                                          })
+                                        }
+                                        fullWidth
+                                      />
+                                    );
+                                  }
+
+                                  if (input.constantType === "boolean") {
+                                    return (
+                                      <TextField
+                                        select
+                                        size="small"
+                                        label="Constant"
+                                        aria-label="Constant"
+                                        title="Constant"
+                                        value={
+                                          input.constantValue === true
+                                            ? "true"
+                                            : input.constantValue === false
+                                              ? "false"
+                                              : ""
+                                        }
+                                        onChange={(event) =>
+                                          handleUpdateInput(index, {
+                                            constantValue:
+                                              event.target.value === "true",
+                                          })
+                                        }
+                                        fullWidth
+                                      >
+                                        <MenuItem value="true">true</MenuItem>
+                                        <MenuItem value="false">false</MenuItem>
+                                      </TextField>
+                                    );
+                                  }
+
+                                  return (
                                     <TextField
                                       size="small"
                                       label={
@@ -729,8 +783,19 @@ export default function AssetAnalysesTemplatePage() {
                                       }
                                       fullWidth
                                     />
-                                  )
-                                )}
+                                  );
+                                })()}
+                              </TableCell>
+                              <TableCell align="center">
+                                <Checkbox
+                                  checked={Boolean(input.required)}
+                                  onChange={(event) =>
+                                    handleUpdateInput(index, {
+                                      required: event.target.checked,
+                                    })
+                                  }
+                                  inputProps={{ "aria-label": "Required" }}
+                                />
                               </TableCell>
                               <TableCell align="center">
                                 <IconButton
@@ -830,6 +895,8 @@ function normalizeTemplateInputs(
         attributePath: input.attributePath ?? null,
         attributeKey: input.attributeKey ?? null,
         constantValue: input.constantValue ?? "",
+        paramKey: input.paramKey ?? null,
+        required: input.required ?? false,
       },
       attributeOptions
     )

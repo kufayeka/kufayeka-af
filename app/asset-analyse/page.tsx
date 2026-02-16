@@ -14,6 +14,7 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   CssBaseline,
   Divider,
   IconButton,
@@ -46,9 +47,11 @@ type AnalysisInputRow = {
   attributePath: string | null;
   attributeKey?: string | null;
   constantValue: string | number | boolean;
+  paramKey?: string | null;
+  required?: boolean;
 };
 
-type BindingSourceType = "attribute" | "constant";
+type BindingSourceType = "attribute" | "constant" | "query" | "body";
 
 type AnalysisBindingRow = {
   id: string;
@@ -58,6 +61,8 @@ type AnalysisBindingRow = {
   attributePath: string | null;
   attributeKey?: string | null;
   constantValue: string | number | boolean;
+  paramKey?: string | null;
+  required?: boolean;
 };
 
 type AnalysisScript = {
@@ -211,6 +216,8 @@ export default function AssetAnalysePage() {
         attributePath: null,
         attributeKey: null,
         constantValue: "",
+        paramKey: null,
+        required: false,
       },
     ]);
   };
@@ -570,6 +577,9 @@ export default function AssetAnalysePage() {
                           <TableCell sx={{ width: "18%" }}>Source</TableCell>
                           <TableCell sx={{ width: "20%" }}>Type</TableCell>
                           <TableCell>Value</TableCell>
+                          <TableCell align="center" sx={{ width: 90 }}>
+                            Required
+                          </TableCell>
                           {!isTemplateSelected ? (
                             <TableCell align="center" sx={{ width: 72 }}>
                               Action
@@ -580,7 +590,7 @@ export default function AssetAnalysePage() {
                       <TableBody>
                         {bindings.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={isTemplateSelected ? 4 : 5}>
+                            <TableCell colSpan={isTemplateSelected ? 5 : 6}>
                               <Typography
                                 variant="body2"
                                 color="text.secondary"
@@ -624,7 +634,11 @@ export default function AssetAnalysePage() {
                                 {isTemplateSelected ? (
                                   binding.sourceType === "attribute"
                                     ? "Attribute"
-                                    : "Constant"
+                                    : binding.sourceType === "query"
+                                      ? "HTTP Query"
+                                      : binding.sourceType === "body"
+                                        ? "Request Body"
+                                        : "Constant"
                                 ) : (
                                   <TextField
                                     select
@@ -653,6 +667,11 @@ export default function AssetAnalysePage() {
                                                   event.target.value === "constant"
                                                     ? item.constantValue
                                                     : "",
+                                                paramKey:
+                                                  event.target.value === "query" ||
+                                                  event.target.value === "body"
+                                                    ? item.paramKey ?? ""
+                                                    : null,
                                               }
                                             : item
                                         )
@@ -662,6 +681,8 @@ export default function AssetAnalysePage() {
                                   >
                                     <MenuItem value="attribute">Attribute</MenuItem>
                                     <MenuItem value="constant">Constant</MenuItem>
+                                    <MenuItem value="query">HTTP Query</MenuItem>
+                                    <MenuItem value="body">Request Body</MenuItem>
                                   </TextField>
                                 )}
                               </TableCell>
@@ -693,9 +714,9 @@ export default function AssetAnalysePage() {
                                 ) : isTemplateSelected ? (
                                   <TextField
                                     size="small"
-                                    label="Type"
-                                    aria-label="Constant type"
-                                    title="Constant type"
+                                    label="Data type"
+                                    aria-label="Data type"
+                                    title="Data type"
                                     value={binding.constantType}
                                     InputProps={{ readOnly: true }}
                                     fullWidth
@@ -704,9 +725,9 @@ export default function AssetAnalysePage() {
                                   <TextField
                                     select
                                     size="small"
-                                    label="Type"
-                                    aria-label="Constant type"
-                                    title="Constant type"
+                                    label="Data type"
+                                    aria-label="Data type"
+                                    title="Data type"
                                     value={binding.constantType}
                                     onChange={(event) =>
                                       setBindings((prev) =>
@@ -733,112 +754,153 @@ export default function AssetAnalysePage() {
                                 )}
                               </TableCell>
                               <TableCell>
-                                {binding.sourceType === "attribute" ? (
-                                  <Autocomplete
-                                    options={attributeOptions}
-                                    value={
-                                      binding.attributeKey
-                                        ? attributeOptions.find(
-                                            (option) =>
-                                              option.value ===
-                                              binding.attributeKey
-                                          ) ?? null
-                                        : binding.attributePath
-                                          ? attributeOptions.find(
-                                              (option) =>
-                                                option.path ===
-                                                binding.attributePath
-                                            ) ?? null
-                                          : null
-                                    }
-                                    onChange={(_, value) =>
-                                      setBindings((prev) =>
-                                        prev.map((item, idx) =>
-                                          idx === index
-                                            ? {
-                                                ...item,
-                                                attributePath: value?.path ?? null,
-                                                attributeKey: value?.value ?? null,
-                                              }
-                                            : item
-                                        )
-                                      )
-                                    }
-                                    getOptionLabel={(option) => option.label}
-                                    isOptionEqualToValue={(option, value) =>
-                                      option.value === value.value
-                                    }
-                                    filterOptions={createFilterOptions({
-                                      ignoreAccents: true,
-                                      stringify: (option) =>
-                                        `${option.label} ${option.alias} ${option.dataType} ${option.unit}`,
-                                    })}
-                                    renderOption={(props, option) => {
-                                      const { key, ...rest } = props;
-                                      return (
-                                        <li key={key} {...rest}>
-                                          <Stack>
-                                            <Typography variant="body2">
-                                              {option.label}
-                                            </Typography>
-                                            <Typography variant="caption">
-                                              alias: {option.alias}
-                                            </Typography>
-                                            <Typography
-                                              variant="caption"
-                                              color="text.secondary"
-                                            >
-                                              {option.dataType} {option.unit || ""}
-                                            </Typography>
-                                          </Stack>
-                                        </li>
-                                      );
-                                    }}
-                                    renderInput={(params) => (
-                                      <TextField
-                                        {...params}
-                                        size="small"
-                                        label="Asset attribute"
-                                        aria-label="Asset attribute"
-                                        title="Asset attribute"
-                                      />
-                                    )}
-                                    fullWidth
-                                  />
-                                ) : (
-                                  binding.constantType === "boolean" ? (
-                                    <TextField
-                                      select
-                                      size="small"
-                                      label="Constant"
-                                      aria-label="Constant"
-                                      title="Constant"
-                                      value={
-                                        binding.constantValue === true
-                                          ? "true"
-                                          : binding.constantValue === false
-                                          ? "false"
-                                          : ""
-                                      }
-                                      onChange={(event) =>
-                                        setBindings((prev) =>
-                                          prev.map((item, idx) =>
-                                            idx === index
-                                              ? {
-                                                  ...item,
-                                                  constantValue:
-                                                    event.target.value === "true",
-                                                }
-                                              : item
+                                {(() => {
+                                  if (binding.sourceType === "attribute") {
+                                    return (
+                                      <Autocomplete
+                                        options={attributeOptions}
+                                        value={
+                                          binding.attributeKey
+                                            ? attributeOptions.find(
+                                                (option) =>
+                                                  option.value ===
+                                                  binding.attributeKey
+                                              ) ?? null
+                                            : binding.attributePath
+                                              ? attributeOptions.find(
+                                                  (option) =>
+                                                    option.path ===
+                                                    binding.attributePath
+                                                ) ?? null
+                                              : null
+                                        }
+                                        onChange={(_, value) =>
+                                          setBindings((prev) =>
+                                            prev.map((item, idx) =>
+                                              idx === index
+                                                ? {
+                                                    ...item,
+                                                    attributePath: value?.path ?? null,
+                                                    attributeKey: value?.value ?? null,
+                                                  }
+                                                : item
+                                            )
                                           )
-                                        )
-                                      }
-                                      fullWidth
-                                    >
-                                      <MenuItem value="true">true</MenuItem>
-                                      <MenuItem value="false">false</MenuItem>
-                                    </TextField>
-                                  ) : (
+                                        }
+                                        getOptionLabel={(option) => option.label}
+                                        isOptionEqualToValue={(option, value) =>
+                                          option.value === value.value
+                                        }
+                                        filterOptions={createFilterOptions({
+                                          ignoreAccents: true,
+                                          stringify: (option) =>
+                                            `${option.label} ${option.alias} ${option.dataType} ${option.unit}`,
+                                        })}
+                                        renderOption={(props, option) => {
+                                          const { key, ...rest } = props;
+                                          return (
+                                            <li key={key} {...rest}>
+                                              <Stack>
+                                                <Typography variant="body2">
+                                                  {option.label}
+                                                </Typography>
+                                                <Typography variant="caption">
+                                                  alias: {option.alias}
+                                                </Typography>
+                                                <Typography
+                                                  variant="caption"
+                                                  color="text.secondary"
+                                                >
+                                                  {option.dataType} {option.unit || ""}
+                                                </Typography>
+                                              </Stack>
+                                            </li>
+                                          );
+                                        }}
+                                        renderInput={(params) => (
+                                          <TextField
+                                            {...params}
+                                            size="small"
+                                            label="Asset attribute"
+                                            aria-label="Asset attribute"
+                                            title="Asset attribute"
+                                          />
+                                        )}
+                                        fullWidth
+                                      />
+                                    );
+                                  }
+
+                                  if (
+                                    binding.sourceType === "query" ||
+                                    binding.sourceType === "body"
+                                  ) {
+                                    return (
+                                      <TextField
+                                        size="small"
+                                        label={
+                                          binding.sourceType === "query"
+                                            ? "Query Key"
+                                            : "Body Key"
+                                        }
+                                        aria-label="Request key"
+                                        title="Request key"
+                                        value={binding.paramKey ?? ""}
+                                        onChange={(event) =>
+                                          setBindings((prev) =>
+                                            prev.map((item, idx) =>
+                                              idx === index
+                                                ? {
+                                                    ...item,
+                                                    paramKey: event.target.value,
+                                                  }
+                                                : item
+                                            )
+                                          )
+                                        }
+                                        InputProps={{ readOnly: isTemplateSelected }}
+                                        fullWidth
+                                      />
+                                    );
+                                  }
+
+                                  if (binding.constantType === "boolean") {
+                                    return (
+                                      <TextField
+                                        select
+                                        size="small"
+                                        label="Constant"
+                                        aria-label="Constant"
+                                        title="Constant"
+                                        value={
+                                          binding.constantValue === true
+                                            ? "true"
+                                            : binding.constantValue === false
+                                              ? "false"
+                                              : ""
+                                        }
+                                        onChange={(event) =>
+                                          setBindings((prev) =>
+                                            prev.map((item, idx) =>
+                                              idx === index
+                                                ? {
+                                                    ...item,
+                                                    constantValue:
+                                                      event.target.value === "true",
+                                                  }
+                                                : item
+                                            )
+                                          )
+                                        }
+                                        fullWidth
+                                      >
+                                        <MenuItem value="true">true</MenuItem>
+                                        <MenuItem value="false">false</MenuItem>
+                                      </TextField>
+                                    );
+                                  }
+
+                                  return (
                                     <TextField
                                       size="small"
                                       label={
@@ -888,8 +950,27 @@ export default function AssetAnalysePage() {
                                       }
                                       fullWidth
                                     />
-                                  )
-                                )}
+                                  );
+                                })()}
+                              </TableCell>
+                              <TableCell align="center">
+                                <Checkbox
+                                  checked={Boolean(binding.required)}
+                                  onChange={(event) =>
+                                    setBindings((prev) =>
+                                      prev.map((item, idx) =>
+                                        idx === index
+                                          ? {
+                                              ...item,
+                                              required: event.target.checked,
+                                            }
+                                          : item
+                                      )
+                                    )
+                                  }
+                                  inputProps={{ "aria-label": "Required" }}
+                                  disabled={isTemplateSelected}
+                                />
                               </TableCell>
                               {!isTemplateSelected ? (
                                 <TableCell align="center">
@@ -1001,6 +1082,13 @@ function normalizeBindings(
       variableName: input.variableName,
       sourceType,
       constantType: existing?.constantType ?? input.constantType ?? "string",
+      paramKey:
+        sourceType === "query" || sourceType === "body"
+          ? keepExisting
+            ? existing?.paramKey ?? input.paramKey ?? ""
+            : input.paramKey ?? ""
+          : null,
+      required: input.required ?? existing?.required ?? false,
       attributePath:
         sourceType === "attribute"
           ? keepExisting

@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       name: body.name,
       description: body.description ?? null,
       script,
-      inputs: body.inputs ?? null,
+      inputs: body.inputs ?? [],
       templateId: body.templateId ?? null,
     },
   });

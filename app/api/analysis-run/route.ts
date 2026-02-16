@@ -1,13 +1,37 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../lib/prisma";
-import { buildVariableBindings } from "./_bindings";
-import { runInPool } from "./_pool";
+import { BindingValidationError, buildVariableBindings } from "./_bindings";
+import { runInPool, type PoolWriteItem } from "./_pool";
 import { buildMacroData } from "./_macro-data";
 import { parseAttributeValue, resolveTagPath } from "../analysis/_utils";
 
 export const runtime = "nodejs";
 
-export async function GET(request: Request) {
+type HistorianQueryWrite = PoolWriteItem & {
+  paths: string[];
+  start: string;
+  end: string;
+  bucket?: string;
+  format?: string;
+  iso?: boolean;
+};
+
+async function readRequestBody(request: Request) {
+  if (request.method === "GET") {
+    return undefined;
+  }
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    return undefined;
+  }
+  try {
+    return await request.json();
+  } catch {
+    return undefined;
+  }
+}
+
+async function handleRun(request: Request) {
   const { searchParams } = new URL(request.url);
   const name = searchParams.get("name");
 
@@ -40,7 +64,11 @@ export async function GET(request: Request) {
       (script.inputs as unknown[]) ??
       (script.template?.inputs as unknown[]) ??
       [];
-    const bindings = await buildVariableBindings(inputs as never[]);
+    const body = await readRequestBody(request);
+    const bindings = await buildVariableBindings(inputs as never[], {
+      query: searchParams,
+      body,
+    });
     const macroData = await buildMacroData();
 
     const effectiveScript = script.templateId
@@ -51,14 +79,12 @@ export async function GET(request: Request) {
 
     if (writes.length > 0) {
       const historianQueries = writes.filter(
-        (write) => (write as { target?: string }).target === "historianQuery"
-      );
+        (write) => write.target === "historianQuery"
+      ) as HistorianQueryWrite[];
       const historianWrites = writes.filter(
-        (write) => (write as { target?: string }).target === "historian"
+        (write) => write.target === "historian"
       );
-      const attributeWrites = writes.filter(
-        (write) => !(write as { target?: string }).target
-      );
+      const attributeWrites = writes.filter((write) => !write.target);
 
       if (attributeWrites.length > 0) {
         await Promise.all(
@@ -119,7 +145,7 @@ export async function GET(request: Request) {
         const historianRows: Array<{ path: string; ts: Date; value: unknown }> = [];
 
         await Promise.all(
-          historianQueries.map(async (query) => {
+          historianQueries.map(async (query: HistorianQueryWrite) => {
             const startTs = new Date(query.start);
             const endTs = new Date(query.end);
             if (
@@ -166,7 +192,8 @@ export async function GET(request: Request) {
         );
 
         const useIso = historianQueries.some(
-          (query) => query.format === "iso" || query.iso === true
+          (query: HistorianQueryWrite) =>
+            query.format === "iso" || query.iso === true
         );
         const byTime = new Map<string, Record<string, unknown>>();
         historianRows.forEach((row) => {
@@ -202,9 +229,18 @@ export async function GET(request: Request) {
       result: result ?? {},
     });
   } catch (error) {
+    const status = error instanceof BindingValidationError ? 400 : 500;
     return NextResponse.json(
       { message: "error", result: { error: (error as Error).message } },
-      { status: 500 }
+      { status }
     );
   }
+}
+
+export async function GET(request: Request) {
+  return handleRun(request);
+}
+
+export async function POST(request: Request) {
+  return handleRun(request);
 }

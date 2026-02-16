@@ -25,7 +25,7 @@ export async function PUT(
   } = {
     name: body.name,
     description: body.description ?? null,
-    inputs: body.inputs ?? null,
+      inputs: body.inputs ?? [],
     templateId: body.templateId ?? null,
   };
 

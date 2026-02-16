@@ -78,11 +78,18 @@ function getAvailableWorker() {
   return workers.find((wrapper) => !wrapper.busy) ?? null;
 }
 
+export type PoolWriteItem = {
+  path: string;
+  value: unknown;
+  target?: string;
+  ts?: string | Date | null;
+};
+
 export function runInPool(
   script: string,
   bindings: Record<string, unknown>,
   macroData: Record<string, unknown>
-) {
+): Promise<{ result: unknown; writes: PoolWriteItem[] }> {
   return new Promise((resolve, reject) => {
     const execute = () => {
       const wrapper = getAvailableWorker();
