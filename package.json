@@ -9,6 +9,7 @@
     "lint": "eslint",
     "worker:analysis": "tsx workers/analysis-queue-worker.ts",
     "worker:attribute": "tsx workers/attribute-write-queue-worker.ts",
+    "worker:cron": "tsx workers/analysis-cron-worker.ts",
     "prisma": "prisma",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

@@ -53,9 +53,15 @@ export const attributeWriteQueueEvents = new QueueEvents(ATTRIBUTE_WRITE_QUEUE_N
   connection: queueEventsConnection,
 });
 
+function toSafeJobId(value: string) {
+  return value.replace(/:/g, "__");
+}
+
 export async function enqueueAttributeWriteJob(data: AttributeWriteJobData) {
   return attributeWriteQueue.add("attribute-write", data, {
-    jobId: `${data.path}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+    jobId: toSafeJobId(
+      `${data.path}__${Date.now()}__${Math.random().toString(36).slice(2)}`
+    ),
   });
 }
 

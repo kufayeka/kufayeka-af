@@ -49,9 +49,24 @@ export const analysisRunQueueEvents = new QueueEvents(ANALYSIS_QUEUE_NAME, {
   connection: queueEventsConnection,
 });
 
+function toSafeJobId(value: string) {
+  return value.replace(/:/g, "__");
+}
+
 export async function enqueueAnalysisRunJob(data: AnalysisRunJobData) {
   return analysisRunQueue.add("analysis-run", data, {
-    jobId: `${data.name}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+    jobId: toSafeJobId(
+      `${data.name}__${Date.now()}__${Math.random().toString(36).slice(2)}`
+    ),
+  });
+}
+
+export async function enqueueAnalysisRunJobWithId(
+  data: AnalysisRunJobData,
+  jobId: string
+) {
+  return analysisRunQueue.add("analysis-run", data, {
+    jobId: toSafeJobId(jobId),
   });
 }
 
