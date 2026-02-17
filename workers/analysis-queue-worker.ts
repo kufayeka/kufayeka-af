@@ -1,7 +1,7 @@
+import "dotenv/config";
 import { Worker } from "bullmq";
 import IORedis from "ioredis";
 import { ANALYSIS_QUEUE_NAME, type AnalysisRunJobData } from "../lib/analysis-queue";
-import { handleAnalysisRun } from "../app/api/analysis-run/_handler";
 
 const redisHost = process.env.REDIS_HOST ?? "127.0.0.1";
 const redisPort = Number(process.env.REDIS_PORT ?? 6379);
@@ -17,9 +17,14 @@ const connection = new IORedis({
   maxRetriesPerRequest: null,
 });
 
+connection.on("error", (error) => {
+  console.error(`[analysis-queue] redis connection error: ${error.message}`);
+});
+
 const worker = new Worker<AnalysisRunJobData>(
   ANALYSIS_QUEUE_NAME,
   async (job) => {
+    const { handleAnalysisRun } = await import("../app/api/analysis-run/_handler");
     const params = new URLSearchParams(job.data.query);
     params.set("name", job.data.name);
     const url = `http://analysis.local/api/analysis-run?${params.toString()}`;

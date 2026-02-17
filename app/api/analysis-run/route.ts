@@ -1,45 +1,92 @@
 import { handleAnalysisRun } from "./_handler";
-import { enqueueAnalysisRunJob } from "../../../lib/analysis-queue";
+import { enqueueAnalysisRunJob, waitForAnalysisRunJob } from "../../../lib/analysis-queue";
 
 export const runtime = "nodejs";
 
+const DEFAULT_WAIT_MS = 10_000;
+
+function parseWaitMs(raw: unknown) {
+  if (raw === undefined || raw === null || raw === "") {
+    return DEFAULT_WAIT_MS;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_WAIT_MS;
+  }
+  return Math.max(0, Math.floor(parsed));
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const mode = searchParams.get("mode");
-  if (mode === "async") {
-    const name = searchParams.get("name");
-    if (!name) {
-      return Response.json(
-        { message: "error", result: { error: "name is required" } },
-        { status: 400 }
-      );
-    }
-    const query = Array.from(searchParams.entries()).filter(([key]) => key !== "mode");
-    const job = await enqueueAnalysisRunJob({
-      name,
-      method: "GET",
-      query,
-    });
+  const mode = searchParams.get("mode") ?? "async";
+  if (mode === "sync") {
+    return handleAnalysisRun(request);
+  }
+
+  const name = searchParams.get("name");
+  if (!name) {
+    return Response.json(
+      { message: "error", result: { error: "name is required" } },
+      { status: 400 }
+    );
+  }
+
+  const waitMs = parseWaitMs(searchParams.get("waitMs") ?? searchParams.get("wait"));
+  const query = Array.from(searchParams.entries()).filter(
+    ([key]) => key !== "mode" && key !== "wait" && key !== "waitMs"
+  );
+  const job = await enqueueAnalysisRunJob({
+    name,
+    method: "GET",
+    query,
+  });
+
+  if (waitMs === 0) {
     return Response.json(
       { accepted: true, jobId: job.id, status: "queued" },
       { status: 202 }
     );
   }
-  return handleAnalysisRun(request);
+
+  try {
+    const result = await waitForAnalysisRunJob(job, waitMs);
+    return Response.json(result);
+  } catch (error) {
+    const message = (error as Error).message;
+    if (message.toLowerCase().includes("timed out")) {
+      return Response.json(
+        { accepted: true, jobId: job.id, status: "queued" },
+        { status: 202 }
+      );
+    }
+    return Response.json(
+      { accepted: false, jobId: job.id, status: "failed", error: message },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(request: Request) {
   const { searchParams } = new URL(request.url);
-  let mode = searchParams.get("mode");
+  let mode = searchParams.get("mode") ?? "async";
+  let waitRaw: unknown = searchParams.get("waitMs") ?? searchParams.get("wait");
   let body: unknown = undefined;
   const contentType = request.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     try {
       body = await request.clone().json();
-      if (!mode && body && typeof body === "object" && "mode" in (body as Record<string, unknown>)) {
-        const bodyMode = (body as Record<string, unknown>).mode;
-        if (bodyMode === "async") {
-          mode = "async";
+      if (body && typeof body === "object") {
+        const bodyObj = body as Record<string, unknown>;
+        if ("mode" in bodyObj) {
+          const bodyMode = bodyObj.mode;
+          if (bodyMode === "async") {
+            mode = "async";
+          } else if (bodyMode === "sync") {
+            mode = "sync";
+          }
+        }
+        if (waitRaw === undefined || waitRaw === null || waitRaw === "") {
+          waitRaw = bodyObj.waitMs ?? bodyObj.wait ?? waitRaw;
         }
       }
     } catch {
@@ -47,31 +94,58 @@ export async function POST(request: Request) {
     }
   }
 
-  if (mode === "async") {
-    const name = searchParams.get("name");
-    if (!name) {
-      return Response.json(
-        { message: "error", result: { error: "name is required" } },
-        { status: 400 }
-      );
-    }
-    const query = Array.from(searchParams.entries()).filter(([key]) => key !== "mode");
-    const payload =
-      body && typeof body === "object"
-        ? Object.fromEntries(
-            Object.entries(body as Record<string, unknown>).filter(([key]) => key !== "mode")
+  if (mode === "sync") {
+    return handleAnalysisRun(request);
+  }
+
+  const name = searchParams.get("name");
+  if (!name) {
+    return Response.json(
+      { message: "error", result: { error: "name is required" } },
+      { status: 400 }
+    );
+  }
+
+  const waitMs = parseWaitMs(waitRaw);
+  const query = Array.from(searchParams.entries()).filter(
+    ([key]) => key !== "mode" && key !== "wait" && key !== "waitMs"
+  );
+  const payload =
+    body && typeof body === "object"
+      ? Object.fromEntries(
+          Object.entries(body as Record<string, unknown>).filter(
+            ([key]) => key !== "mode" && key !== "wait" && key !== "waitMs"
           )
-        : undefined;
-    const job = await enqueueAnalysisRunJob({
-      name,
-      method: "POST",
-      query,
-      body: payload,
-    });
+        )
+      : undefined;
+  const job = await enqueueAnalysisRunJob({
+    name,
+    method: "POST",
+    query,
+    body: payload,
+  });
+
+  if (waitMs === 0) {
     return Response.json(
       { accepted: true, jobId: job.id, status: "queued" },
       { status: 202 }
     );
   }
-  return handleAnalysisRun(request);
+
+  try {
+    const result = await waitForAnalysisRunJob(job, waitMs);
+    return Response.json(result);
+  } catch (error) {
+    const message = (error as Error).message;
+    if (message.toLowerCase().includes("timed out")) {
+      return Response.json(
+        { accepted: true, jobId: job.id, status: "queued" },
+        { status: 202 }
+      );
+    }
+    return Response.json(
+      { accepted: false, jobId: job.id, status: "failed", error: message },
+      { status: 500 }
+    );
+  }
 }

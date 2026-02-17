@@ -1,4 +1,4 @@
-import { Queue } from "bullmq";
+import { Queue, QueueEvents } from "bullmq";
 import IORedis from "ioredis";
 
 export type AnalysisRunJobData = {
@@ -13,18 +13,27 @@ const redisPort = Number(process.env.REDIS_PORT ?? 6379);
 const redisPassword = process.env.REDIS_PASSWORD;
 const redisDb = Number(process.env.REDIS_DB ?? 0);
 
-const connection = new IORedis({
-  host: redisHost,
-  port: redisPort,
-  password: redisPassword,
-  db: redisDb,
-  maxRetriesPerRequest: null,
-});
+function createRedisConnection() {
+  const client = new IORedis({
+    host: redisHost,
+    port: redisPort,
+    password: redisPassword,
+    db: redisDb,
+    maxRetriesPerRequest: null,
+  });
+  client.on("error", (error) => {
+    console.error(`[analysis-queue] redis error ${redisHost}:${redisPort}/${redisDb} - ${error.message}`);
+  });
+  return client;
+}
+
+const queueConnection = createRedisConnection();
+const queueEventsConnection = createRedisConnection();
 
 export const ANALYSIS_QUEUE_NAME = "analysis-run-jobs";
 
 export const analysisRunQueue = new Queue<AnalysisRunJobData>(ANALYSIS_QUEUE_NAME, {
-  connection,
+  connection: queueConnection,
   defaultJobOptions: {
     removeOnComplete: 1000,
     removeOnFail: 1000,
@@ -36,10 +45,21 @@ export const analysisRunQueue = new Queue<AnalysisRunJobData>(ANALYSIS_QUEUE_NAM
   },
 });
 
+export const analysisRunQueueEvents = new QueueEvents(ANALYSIS_QUEUE_NAME, {
+  connection: queueEventsConnection,
+});
+
 export async function enqueueAnalysisRunJob(data: AnalysisRunJobData) {
   return analysisRunQueue.add("analysis-run", data, {
     jobId: `${data.name}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
   });
+}
+
+export async function waitForAnalysisRunJob(
+  job: Awaited<ReturnType<typeof enqueueAnalysisRunJob>>,
+  waitMs: number
+) {
+  return job.waitUntilFinished(analysisRunQueueEvents, waitMs);
 }
 
 export async function getAnalysisRunJob(jobId: string) {
