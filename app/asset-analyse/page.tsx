@@ -100,7 +100,7 @@ type AnalysisCron = {
   id: string;
   name: string;
   description: string | null;
-  intervalSecond: number;
+  cronExpression: string;
   isRunning: boolean;
   scripts?: Array<{
     id: string;
@@ -652,7 +652,7 @@ export default function AssetAnalysePage() {
                       <MenuItem value="">(No cron)</MenuItem>
                       {crons.map((cron) => (
                         <MenuItem key={cron.id} value={cron.id}>
-                          {cron.name} ({cron.intervalSecond}s)
+                          {cron.name} ({cron.cronExpression})
                         </MenuItem>
                       ))}
                     </TextField>
@@ -1344,7 +1344,7 @@ function renderScriptHierarchy({
     return (
       <Box key={cron.id} sx={{ ml: depth * 2 }}>
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
-          {cron.name} ({cron.intervalSecond}s) {cron.isRunning ? "RUN" : "STOP"}
+          {cron.name} ({cron.cronExpression}) {cron.isRunning ? "RUN" : "STOP"}
         </Typography>
         <Stack spacing={0.5}>
           {scheduledScripts.map((item) => renderScriptCard(item, depth + 1))}
@@ -1413,7 +1413,7 @@ function CronGeneratorTab({
   const [form, setForm] = useState({
     name: "",
     description: "",
-    intervalSecond: 60,
+    cronExpression: "*/1 * * * * *",
     isRunning: false,
   });
 
@@ -1429,7 +1429,7 @@ function CronGeneratorTab({
     setForm({
       name: selected.name,
       description: selected.description ?? "",
-      intervalSecond: selected.intervalSecond,
+      cronExpression: selected.cronExpression,
       isRunning: selected.isRunning,
     });
   }, [selected]);
@@ -1439,7 +1439,7 @@ function CronGeneratorTab({
     setForm({
       name: "",
       description: "",
-      intervalSecond: 60,
+      cronExpression: "*/1 * * * * *",
       isRunning: false,
     });
   };
@@ -1458,7 +1458,7 @@ function CronGeneratorTab({
           body: JSON.stringify({
             name: form.name,
             description: form.description || null,
-            intervalSecond: form.intervalSecond,
+            cronExpression: form.cronExpression,
             isRunning: form.isRunning,
           }),
         }
@@ -1548,7 +1548,7 @@ function CronGeneratorTab({
                   {cron.name}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {cron.intervalSecond}s - {cron.isRunning ? "RUN" : "STOP"}
+                  {cron.cronExpression} - {cron.isRunning ? "RUN" : "STOP"}
                 </Typography>
                 <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
                   <Button
@@ -1603,13 +1603,13 @@ function CronGeneratorTab({
               </Stack>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                 <TextField
-                  type="number"
-                  label="Interval second"
-                  value={form.intervalSecond}
+                  label="Cron expression"
+                  helperText="6 fields: second minute hour day month dayOfWeek (contoh: */1 * * * * *)"
+                  value={form.cronExpression}
                   onChange={(event) =>
                     setForm((prev) => ({
                       ...prev,
-                      intervalSecond: Math.max(1, Number(event.target.value || 1)),
+                      cronExpression: event.target.value,
                     }))
                   }
                   fullWidth

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
+import { assertValidCronExpression } from "../../../../lib/cron-expression";
 
 export const runtime = "nodejs";
 
@@ -11,21 +12,30 @@ export async function PUT(
   const body = (await request.json()) as {
     name?: string;
     description?: string | null;
-    intervalSecond?: number;
+    cronExpression?: string;
     isRunning?: boolean;
   };
 
-  const intervalSecond =
-    body.intervalSecond === undefined
-      ? undefined
-      : Math.max(1, Math.floor(Number(body.intervalSecond)));
+  const cronExpression =
+    body.cronExpression === undefined ? undefined : body.cronExpression.trim();
+
+  if (cronExpression !== undefined) {
+    try {
+      assertValidCronExpression(cronExpression);
+    } catch (error) {
+      return NextResponse.json(
+        { error: (error as Error).message },
+        { status: 400 }
+      );
+    }
+  }
 
   const cron = await prisma.analysisCron.update({
     where: { id },
     data: {
       name: body.name,
       description: body.description ?? null,
-      intervalSecond,
+      cronExpression,
       isRunning: body.isRunning,
     },
     include: {

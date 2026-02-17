@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../lib/prisma";
+import { assertValidCronExpression } from "../../../lib/cron-expression";
 
 export const runtime = "nodejs";
 
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
   const body = (await request.json()) as {
     name?: string;
     description?: string | null;
-    intervalSecond?: number;
+    cronExpression?: string;
     isRunning?: boolean;
   };
 
@@ -33,13 +34,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
 
-  const intervalSecond = Math.max(1, Math.floor(Number(body.intervalSecond ?? 60)));
+  const cronExpression = body.cronExpression?.trim();
+  if (!cronExpression) {
+    return NextResponse.json(
+      { error: "cronExpression is required" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    assertValidCronExpression(cronExpression);
+  } catch (error) {
+    return NextResponse.json(
+      { error: (error as Error).message },
+      { status: 400 }
+    );
+  }
 
   const cron = await prisma.analysisCron.create({
     data: {
       name: body.name,
       description: body.description ?? null,
-      intervalSecond,
+      cronExpression,
       isRunning: Boolean(body.isRunning),
     },
     include: {
