@@ -3,7 +3,8 @@ import { prisma } from "../../../lib/prisma";
 import { BindingValidationError, buildVariableBindings } from "./_bindings";
 import { runInPool, type PoolWriteItem } from "./_pool";
 import { buildMacroData } from "./_macro-data";
-import { parseAttributeValue, resolveAssetPath, resolveTagPath } from "../analysis/_utils";
+import { resolveAssetPath, resolveTagPath } from "../analysis/_utils";
+import { writeAssetAttributeByPath } from "../asset-attributes/_write";
 import { randomUUID } from "crypto";
 
 
@@ -88,6 +89,105 @@ async function readRequestBody(request: Request) {
   }
 }
 
+function normalizePath(value: string) {
+  return value
+    .split(".")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(".");
+}
+
+function collectBindingPathHints(bindings: Record<string, unknown>) {
+  const assetPaths = new Set<string>();
+  const attributePaths = new Set<string>();
+
+  Object.values(bindings).forEach((binding) => {
+    if (!binding || typeof binding !== "object") {
+      return;
+    }
+    const item = binding as { sourceType?: string; path?: string | null };
+    const path = typeof item.path === "string" ? normalizePath(item.path) : "";
+    if (!path) {
+      return;
+    }
+    if (item.sourceType === "asset") {
+      assetPaths.add(path);
+      return;
+    }
+    if (item.sourceType === "attribute") {
+      attributePaths.add(path);
+    }
+  });
+
+  return { assetPaths, attributePaths };
+}
+
+function collectScriptPathHints(script: string) {
+  const assetPaths = new Set<string>();
+  const attributePaths = new Set<string>();
+  let includeAllAssets = false;
+  let includeAllAttributes = false;
+  let includeAllEvents = false;
+
+  const addLiteralMatches = (regex: RegExp, target: Set<string>) => {
+    for (const match of script.matchAll(regex)) {
+      const path = normalizePath(match[1] ?? "");
+      if (path) {
+        target.add(path);
+      }
+    }
+  };
+
+  addLiteralMatches(/Attribute\.get\(\s*["'`]([^"'`]+)["'`]\s*\)/g, attributePaths);
+  addLiteralMatches(/Asset\.get\(\s*["'`]([^"'`]+)["'`]\s*\)/g, assetPaths);
+  addLiteralMatches(/Asset\.getHierarchy\(\s*["'`]([^"'`]+)["'`]\s*\)/g, assetPaths);
+  addLiteralMatches(/Attribute\.list\(\s*["'`]([^"'`]+)["'`]\s*\)/g, assetPaths);
+
+  for (const match of script.matchAll(
+    /(?:Attribute|Historian)\.getMany\(\s*\[([\s\S]*?)\]\s*(?:,|\))/g
+  )) {
+    const rawArray = match[1] ?? "";
+    for (const item of rawArray.matchAll(/["'`]([^"'`]+)["'`]/g)) {
+      const path = normalizePath(item[1] ?? "");
+      if (path) {
+        attributePaths.add(path);
+      }
+    }
+  }
+
+  if (/Asset\.(list|query)\s*\(/.test(script)) {
+    includeAllAssets = true;
+  }
+  if (
+    (/(Asset\.(get|getHierarchy)\s*\()/.test(script) && assetPaths.size === 0) ||
+    (/Attribute\.list\(\s*[^)]*\)/.test(script) && !/Attribute\.list\(\s*["'`]/.test(script))
+  ) {
+    includeAllAssets = true;
+  }
+  if (/Attribute\.list\(\s*\)/.test(script)) {
+    includeAllAttributes = true;
+    includeAllAssets = true;
+  }
+  if (
+    (/(Attribute\.(get|getMany)\s*\()/.test(script) && attributePaths.size === 0) ||
+    (/Attribute\.list\(\s*[^)]*\)/.test(script) && !/Attribute\.list\(\s*\)/.test(script))
+  ) {
+    includeAllAttributes = true;
+    includeAllAssets = true;
+  }
+  if (/Event\.get\s*\(/.test(script)) {
+    includeAllEvents = true;
+  }
+
+  return {
+    assetPaths,
+    attributePaths,
+    includeAllAssets,
+    includeAllAttributes,
+    includeAllEvents,
+  };
+}
+
 export async function handleAnalysisRun(request: Request, nameOverride?: string) {
   const { searchParams } = new URL(request.url);
   const name = nameOverride ?? searchParams.get("name");
@@ -126,11 +226,27 @@ export async function handleAnalysisRun(request: Request, nameOverride?: string)
       query: searchParams,
       body,
     });
-    const macroData = await buildMacroData();
-
     const effectiveScript = script.templateId
       ? script.template?.script ?? script.script
       : script.script;
+    const bindingHints = collectBindingPathHints(bindings);
+    const scriptHints = collectScriptPathHints(effectiveScript);
+    const combinedAssetPaths = new Set<string>([
+      ...bindingHints.assetPaths,
+      ...scriptHints.assetPaths,
+    ]);
+    const combinedAttributePaths = new Set<string>([
+      ...bindingHints.attributePaths,
+      ...scriptHints.attributePaths,
+    ]);
+    const macroData = await buildMacroData({
+      assetPaths: Array.from(combinedAssetPaths),
+      attributePaths: Array.from(combinedAttributePaths),
+      includeAllAssets: scriptHints.includeAllAssets,
+      includeAllAttributes: scriptHints.includeAllAttributes,
+      includeAllEvents: scriptHints.includeAllEvents,
+    });
+
     const wrapped = `(function(){\n${effectiveScript}\n})()`;
     const { result, writes } = await runInPool(wrapped, bindings, macroData);
 
@@ -155,24 +271,11 @@ export async function handleAnalysisRun(request: Request, nameOverride?: string)
             if (!write.path) {
               throw new Error("Attribute path is required");
             }
-            const resolved = await resolveTagPath(write.path);
-            const parsedValue = parseAttributeValue(
-              resolved.dataType,
-              write.value
-            );
-            await prisma.assetAttribute.upsert({
-              where: {
-                assetId_templateItemId: {
-                  assetId: resolved.assetId,
-                  templateItemId: resolved.templateItemId,
-                },
-              },
-              update: { value: parsedValue },
-              create: {
-                assetId: resolved.assetId,
-                templateItemId: resolved.templateItemId,
-                value: parsedValue,
-              },
+            await writeAssetAttributeByPath({
+              path: write.path,
+              value: write.value,
+              recordHistory: false,
+              updateCurrent: true,
             });
           })
         );
@@ -184,27 +287,12 @@ export async function handleAnalysisRun(request: Request, nameOverride?: string)
             if (!write.path) {
               throw new Error("Historian path is required");
             }
-            const resolved = await resolveTagPath(write.path);
-            const parsedValue = parseAttributeValue(
-              resolved.dataType,
-              write.value
-            );
-            const timestamp = write.ts ? new Date(write.ts) : new Date();
-            if (Number.isNaN(timestamp.getTime())) {
-              throw new Error("Invalid ts value");
-            }
-            if (!resolved.assetAttributeId) {
-              throw new Error("Attribute value not found");
-            }
-            await prisma.$executeRaw`
-              INSERT INTO asset_attribute_historian (ts, "assetAttributeId", value)
-              VALUES (${timestamp}, ${resolved.assetAttributeId}::uuid, ${parsedValue})
-              ON CONFLICT ("assetAttributeId", ts)
-              DO UPDATE SET value = EXCLUDED.value
-            `;
-            await prisma.assetAttribute.update({
-              where: { id: resolved.assetAttributeId },
-              data: { value: parsedValue },
+            await writeAssetAttributeByPath({
+              path: write.path,
+              value: write.value,
+              ts: write.ts ?? null,
+              recordHistory: true,
+              updateCurrent: false,
             });
           })
         );

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
-import { parseAttributeValue, resolveTagPath } from "../../analysis/_utils";
+import { resolveTagPath } from "../../analysis/_utils";
+import { writeAssetAttributeByPath } from "../_write";
 
 export const runtime = "nodejs";
 
@@ -43,6 +44,7 @@ export async function PUT(request: Request) {
   const body = (await request.json()) as {
     path?: string;
     value?: unknown;
+    ts?: string | number | Date;
   };
 
   if (!body.path) {
@@ -54,30 +56,21 @@ export async function PUT(request: Request) {
   }
 
   try {
-    const resolved = await resolveTagPath(body.path);
-    const parsedValue = parseAttributeValue(resolved.dataType, body.value);
-
-    const attribute = await prisma.assetAttribute.upsert({
-      where: {
-        assetId_templateItemId: {
-          assetId: resolved.assetId,
-          templateItemId: resolved.templateItemId,
-        },
-      },
-      update: { value: parsedValue },
-      create: {
-        assetId: resolved.assetId,
-        templateItemId: resolved.templateItemId,
-        value: parsedValue,
-      },
+    const result = await writeAssetAttributeByPath({
+      path: body.path,
+      value: body.value,
+      ts: body.ts,
+      recordHistory: body.ts !== undefined && body.ts !== null,
+      updateCurrent: true,
     });
 
     return NextResponse.json({
       success: true,
-      assetId: resolved.assetId,
-      templateItemId: resolved.templateItemId,
-      assetAttributeId: attribute.id,
-      value: attribute.value,
+      assetId: result.resolved.assetId,
+      templateItemId: result.resolved.templateItemId,
+      assetAttributeId: result.attribute.id,
+      value: result.value,
+      ts: result.ts.toISOString(),
     });
   } catch (error) {
     const message = (error as Error).message;

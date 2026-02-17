@@ -1,8 +1,8 @@
 import { Box, IconButton, List, ListItem, ListItemButton, ListItemText } from "@mui/material";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import FolderIcon from "@mui/icons-material/Folder";
-import LabelIcon from "@mui/icons-material/Label";
+import BusinessIcon from "@mui/icons-material/Business";
+import LabelIcon from '@mui/icons-material/Label';
 import { Fragment } from "react";
 import type { AssetNode } from "../data/assetData";
 
@@ -36,7 +36,7 @@ export function AssetTreeItem({
               onSelect(node.id);
             }
           }}
-          sx={{ pl: 2 + level * 2 }}
+          sx={{ pl: 2 + level * 1.5, py: 0.25 }}
           aria-label={
             node.nodeType === "asset"
               ? `Pilih asset ${node.name}`
@@ -47,7 +47,6 @@ export function AssetTreeItem({
               ? `Pilih asset ${node.name}`
               : `Attribute ${node.name}`
           }
-          disabled={node.nodeType === "attribute"}
         >
           {hasChildren ? (
             <IconButton
@@ -67,19 +66,22 @@ export function AssetTreeItem({
                   ? `Tutup anak asset ${node.name}`
                   : `Buka anak asset ${node.name}`
               }
-              sx={{ mr: 1 }}
+              sx={{ mr: 0.5 }}
             >
               {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
             </IconButton>
           ) : (
-            <Box sx={{ width: 40 }} />
+            <Box sx={{ width: 36 }} />
           )}
           {node.nodeType === "asset" ? (
-            <FolderIcon fontSize="small" sx={{ mr: 1 }} />
+            <BusinessIcon fontSize="small" sx={{ mr: 0.5 }} />
           ) : (
-            <LabelIcon fontSize="small" sx={{ mr: 1 }} />
+            <LabelIcon fontSize="small" sx={{ mr: 0.5 }} />
           )}
-          <ListItemText primary={node.name} />
+          <ListItemText
+            primary={node.name}
+            primaryTypographyProps={{ variant: "body2" }}
+          />
         </ListItemButton>
       </ListItem>
       {hasChildren && isExpanded ? (

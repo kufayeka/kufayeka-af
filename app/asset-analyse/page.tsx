@@ -32,6 +32,7 @@ import {
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
+import CheckIcon from "@mui/icons-material/Check";
 import { AppHeader } from "../components/AppHeader";
 import type { AssetListItem, TemplateItem } from "../data/assetData";
 
@@ -450,36 +451,47 @@ export default function AssetAnalysePage() {
           </Box>
           <Divider />
           <Box sx={{ flex: 1, overflow: "auto" }}>
-            <Stack spacing={1} sx={{ p: 2 }} aria-label="Daftar analysis">
+            <Stack spacing={0.5} sx={{ p: 2 }} aria-label="Daftar analysis">
               {filteredScripts.map((item) => (
                 <Card
                   key={item.id}
                   variant="outlined"
                   sx={{
+                    cursor: "pointer",
                     borderColor:
-                      item.id === selectedScriptId ? "primary.light" : "divider",
+                      item.id === selectedScriptId ? "primary.main" : "divider",
                     bgcolor:
                       item.id === selectedScriptId
-                        ? "primary.50"
+                        ? "action.selected"
                         : "background.paper",
+                    "&:hover": {
+                      borderColor: "primary.light",
+                      bgcolor: "action.hover",
+                    },
                   }}
+                  onClick={() => handleSelectScript(item)}
                 >
-                  <CardContent sx={{ py: 1.5 }}>
-                    <Stack direction="row" justifyContent="space-between">
+                  <CardContent sx={{ p: 1, "&:last-child": { pb: 1 } }}>
+                    <Stack
+                      direction="row"
+                      justifyContent="space-between"
+                      alignItems="center"
+                    >
                       <Box>
-                        <Typography variant="subtitle2">{item.name}</Typography>
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography variant="body2" fontWeight="bold">
+                          {item.name}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ display: "block", lineHeight: 1.2 }}
+                        >
                           {item.description || "No description"}
                         </Typography>
                       </Box>
-                      <IconButton
-                        aria-label="Pilih analysis"
-                        title="Pilih analysis"
-                        onClick={() => handleSelectScript(item)}
-                        size="small"
-                      >
-                        <AddIcon fontSize="small" />
-                      </IconButton>
+                      {item.id === selectedScriptId && (
+                        <CheckIcon color="primary" fontSize="small" />
+                      )}
                     </Stack>
                   </CardContent>
                 </Card>

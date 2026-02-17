@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../lib/prisma";
-import { parseAttributeValue, resolveTagPath } from "../analysis/_utils";
+import { resolveTagPath } from "../analysis/_utils";
+import { writeAssetAttributeById, writeAssetAttributeByPath } from "../asset-attributes/_write";
 
 export const runtime = "nodejs";
 
@@ -103,43 +104,39 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "value is required" }, { status: 400 });
   }
 
-  const timestamp = body.ts ? new Date(body.ts) : new Date();
+  if (!body.ts) {
+    return NextResponse.json({ error: "ts (timestamp) is required" }, { status: 400 });
+  }
+
+  const timestamp = new Date(body.ts);
   if (Number.isNaN(timestamp.getTime())) {
     return NextResponse.json({ error: "Invalid ts value" }, { status: 400 });
   }
 
   try {
-    const resolved = body.path ? await resolveTagPath(body.path) : null;
-    const attributeId = body.attributeId ?? resolved?.assetAttributeId;
-    if (!attributeId) {
-      return NextResponse.json(
-        { error: "Attribute value not found" },
-        { status: 404 }
-      );
-    }
-
-    const parsedValue = resolved
-      ? parseAttributeValue(resolved.dataType, body.value)
-      : body.value;
-
-    await prisma.$transaction([
-      prisma.$executeRaw`
-        INSERT INTO asset_attribute_historian (ts, "assetAttributeId", value)
-        VALUES (${timestamp}, ${attributeId}::uuid, ${parsedValue})
-      `,
-      prisma.assetAttribute.update({
-        where: { id: attributeId },
-        data: { value: parsedValue },
-      }),
-    ]);
+    const result = body.path
+      ? await writeAssetAttributeByPath({
+          path: body.path,
+          value: body.value,
+          ts: body.ts,
+          recordHistory: true,
+          updateCurrent: false,
+        })
+      : await writeAssetAttributeById({
+          attributeId: body.attributeId as string,
+          value: body.value,
+          ts: body.ts,
+          recordHistory: true,
+          updateCurrent: false,
+        });
 
     return NextResponse.json(
       {
         success: true,
-        ts: timestamp.toISOString(),
-        assetId: resolved?.assetId ?? null,
-        templateItemId: resolved?.templateItemId ?? null,
-        assetAttributeId: attributeId,
+        ts: result.ts.toISOString(),
+        assetId: result.resolved.assetId,
+        templateItemId: result.resolved.templateItemId,
+        assetAttributeId: result.resolved.assetAttributeId,
       },
       { status: 201 }
     );
