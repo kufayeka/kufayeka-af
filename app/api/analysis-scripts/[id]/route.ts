@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
+import type { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
 
@@ -16,26 +17,25 @@ export async function PUT(
     templateId?: string | null;
   };
 
-  const data: {
-    name?: string;
-    description?: string | null;
-    script?: string;
-    inputs?: unknown;
-    templateId?: string | null;
-  } = {
+  const data: Prisma.AnalysisScriptUpdateInput = {
     name: body.name,
     description: body.description ?? null,
-      inputs: body.inputs ?? [],
-    templateId: body.templateId ?? null,
+    inputs: body.inputs ?? [],
   };
+
+  if (body.templateId !== undefined) {
+    data.template = body.templateId
+      ? { connect: { id: body.templateId } }
+      : { disconnect: true };
+  }
 
   if (body.script !== undefined) {
     data.script = body.script;
   }
 
-  if (!data.script && data.templateId) {
+  if (!data.script && body.templateId) {
     const template = await prisma.analysisScriptTemplate.findUnique({
-      where: { id: data.templateId },
+      where: { id: body.templateId },
       select: { script: true },
     });
     data.script = template?.script ?? data.script;

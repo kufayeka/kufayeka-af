@@ -42,12 +42,14 @@ const CodeMirror = dynamic(() => import("@uiw/react-codemirror"), {
 type AnalysisInputRow = {
   id: string;
   variableName: string;
-  sourceType: "attribute" | "constant" | "query" | "body";
+  sourceType: "attribute" | "constant" | "query" | "body" | "asset";
   constantType: "number" | "boolean" | "string" | "array" | "object";
   attributePath: string | null;
   attributeKey?: string | null;
   constantValue: string | number | boolean;
   paramKey?: string | null;
+  assetPath?: string | null;
+  assetId?: string | null;
   required?: boolean;
 };
 
@@ -66,6 +68,11 @@ type AttributeOption = {
   unit: string;
   alias: string;
   path: string;
+};
+
+type AssetOption = {
+  label: string;
+  value: string;
 };
 
 export default function AssetAnalysesTemplatePage() {
@@ -87,6 +94,7 @@ export default function AssetAnalysesTemplatePage() {
     () => buildAttributeOptions(assets),
     [assets]
   );
+  const assetOptions = useMemo(() => buildAssetOptions(assets), [assets]);
 
   useEffect(() => {
     if (attributeOptions.length === 0) return;
@@ -160,6 +168,8 @@ export default function AssetAnalysesTemplatePage() {
           attributeKey: null,
           constantValue: "",
           paramKey: null,
+          assetPath: null,
+          assetId: null,
           required: false,
         },
       ],
@@ -533,7 +543,8 @@ export default function AssetAnalysesTemplatePage() {
                                         | "attribute"
                                         | "constant"
                                         | "query"
-                                        | "body",
+                                        | "body"
+                                        | "asset",
                                       attributePath:
                                         event.target.value === "attribute"
                                           ? input.attributePath
@@ -551,6 +562,14 @@ export default function AssetAnalysesTemplatePage() {
                                         event.target.value === "body"
                                           ? input.paramKey ?? ""
                                           : null,
+                                      assetPath:
+                                        event.target.value === "asset"
+                                          ? input.assetPath ?? null
+                                          : null,
+                                      assetId:
+                                        event.target.value === "asset"
+                                          ? input.assetId ?? null
+                                          : null,
                                     })
                                   }
                                   fullWidth
@@ -559,61 +578,82 @@ export default function AssetAnalysesTemplatePage() {
                                   <MenuItem value="constant">Constant</MenuItem>
                                   <MenuItem value="query">HTTP Query</MenuItem>
                                   <MenuItem value="body">Request Body</MenuItem>
+                                  <MenuItem value="asset">Asset</MenuItem>
                                 </TextField>
                               </TableCell>
                               <TableCell>
-                                {input.sourceType === "attribute" ? (
-                                  <TextField
-                                    size="small"
-                                    label="Type"
-                                    aria-label="Attribute type"
-                                    title="Attribute type"
-                                    value={
-                                      input.attributeKey
-                                        ? attributeOptions.find(
-                                            (option) =>
-                                              option.value ===
-                                              input.attributeKey
-                                          )?.dataType ?? ""
-                                        : input.attributePath
-                                          ? attributeOptions.find(
-                                              (option) =>
-                                                option.path ===
-                                                input.attributePath
-                                            )?.dataType ?? ""
-                                          : ""
-                                    }
-                                    InputProps={{ readOnly: true }}
-                                    fullWidth
-                                  />
-                                ) : (
-                                  <TextField
-                                    select
-                                    size="small"
-                                    label={
-                                      input.sourceType === "constant"
-                                        ? "Constant type"
-                                        : "Data type"
-                                    }
-                                    aria-label="Data type"
-                                    title="Data type"
-                                    value={input.constantType}
-                                    onChange={(event) =>
-                                      handleUpdateInput(index, {
-                                        constantType: event.target
-                                          .value as AnalysisInputRow["constantType"],
-                                        constantValue: "",
-                                      })
-                                    }
-                                    fullWidth
-                                  >
-                                    <MenuItem value="string">String</MenuItem>
-                                    <MenuItem value="number">Number</MenuItem>
-                                    <MenuItem value="boolean">Boolean</MenuItem>
-                                    <MenuItem value="array">Array</MenuItem>
-                                    <MenuItem value="object">Object</MenuItem>
-                                  </TextField>
-                                )}
+                                {(() => {
+                                  if (input.sourceType === "attribute") {
+                                    return (
+                                      <TextField
+                                        size="small"
+                                        label="Type"
+                                        aria-label="Attribute type"
+                                        title="Attribute type"
+                                        value={
+                                          input.attributeKey
+                                            ? attributeOptions.find(
+                                                (option) =>
+                                                  option.value ===
+                                                  input.attributeKey
+                                              )?.dataType ?? ""
+                                            : input.attributePath
+                                              ? attributeOptions.find(
+                                                  (option) =>
+                                                    option.path ===
+                                                    input.attributePath
+                                                )?.dataType ?? ""
+                                              : ""
+                                        }
+                                        InputProps={{ readOnly: true }}
+                                        fullWidth
+                                      />
+                                    );
+                                  }
+
+                                  if (input.sourceType === "asset") {
+                                    return (
+                                      <TextField
+                                        size="small"
+                                        label="Type"
+                                        aria-label="Asset type"
+                                        title="Asset type"
+                                        value="asset"
+                                        InputProps={{ readOnly: true }}
+                                        fullWidth
+                                      />
+                                    );
+                                  }
+
+                                  return (
+                                    <TextField
+                                      select
+                                      size="small"
+                                      label={
+                                        input.sourceType === "constant"
+                                          ? "Constant type"
+                                          : "Data type"
+                                      }
+                                      aria-label="Data type"
+                                      title="Data type"
+                                      value={input.constantType}
+                                      onChange={(event) =>
+                                        handleUpdateInput(index, {
+                                          constantType: event.target
+                                            .value as AnalysisInputRow["constantType"],
+                                          constantValue: "",
+                                        })
+                                      }
+                                      fullWidth
+                                    >
+                                      <MenuItem value="string">String</MenuItem>
+                                      <MenuItem value="number">Number</MenuItem>
+                                      <MenuItem value="boolean">Boolean</MenuItem>
+                                      <MenuItem value="array">Array</MenuItem>
+                                      <MenuItem value="object">Object</MenuItem>
+                                    </TextField>
+                                  );
+                                })()}
                               </TableCell>
                               <TableCell>
                                 {(() => {
@@ -679,6 +719,49 @@ export default function AssetAnalysesTemplatePage() {
                                             label="Asset attribute"
                                             aria-label="Asset attribute"
                                             title="Asset attribute"
+                                          />
+                                        )}
+                                        fullWidth
+                                      />
+                                    );
+                                  }
+
+                                  if (input.sourceType === "asset") {
+                                    return (
+                                      <Autocomplete
+                                        options={assetOptions}
+                                        value={
+                                          input.assetId
+                                            ? assetOptions.find(
+                                                (option) =>
+                                                  option.value ===
+                                                  input.assetId
+                                              ) ?? null
+                                            : input.assetPath
+                                              ? assetOptions.find(
+                                                  (option) =>
+                                                    option.label ===
+                                                    input.assetPath
+                                                ) ?? null
+                                              : null
+                                        }
+                                        onChange={(_, value) =>
+                                          handleUpdateInput(index, {
+                                            assetPath: value?.label ?? null,
+                                            assetId: value?.value ?? null,
+                                          })
+                                        }
+                                        getOptionLabel={(option) => option.label}
+                                        isOptionEqualToValue={(option, value) =>
+                                          option.value === value.value
+                                        }
+                                        renderInput={(params) => (
+                                          <TextField
+                                            {...params}
+                                            size="small"
+                                            label="Asset"
+                                            aria-label="Asset"
+                                            title="Asset"
                                           />
                                         )}
                                         fullWidth
@@ -896,11 +979,36 @@ function normalizeTemplateInputs(
         attributeKey: input.attributeKey ?? null,
         constantValue: input.constantValue ?? "",
         paramKey: input.paramKey ?? null,
+        assetPath: input.assetPath ?? null,
+        assetId: input.assetId ?? null,
         required: input.required ?? false,
       },
       attributeOptions
     )
   );
+}
+
+function buildAssetOptions(assets: AssetListItem[]): AssetOption[] {
+  const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+
+  const buildPath = (assetId: string) => {
+    const parts: string[] = [];
+    let current = assetMap.get(assetId);
+    while (current) {
+      parts.unshift(current.name);
+      current = current.parentAssetId
+        ? assetMap.get(current.parentAssetId)
+        : undefined;
+    }
+    return parts.join(".");
+  };
+
+  return assets
+    .map((asset) => ({
+      label: buildPath(asset.id),
+      value: asset.id,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function buildAttributeOptions(assets: AssetListItem[]): AttributeOption[] {

@@ -48,10 +48,12 @@ type AnalysisInputRow = {
   attributeKey?: string | null;
   constantValue: string | number | boolean;
   paramKey?: string | null;
+  assetPath?: string | null;
+  assetId?: string | null;
   required?: boolean;
 };
 
-type BindingSourceType = "attribute" | "constant" | "query" | "body";
+type BindingSourceType = "attribute" | "constant" | "query" | "body" | "asset";
 
 type AnalysisBindingRow = {
   id: string;
@@ -62,6 +64,8 @@ type AnalysisBindingRow = {
   attributeKey?: string | null;
   constantValue: string | number | boolean;
   paramKey?: string | null;
+  assetPath?: string | null;
+  assetId?: string | null;
   required?: boolean;
 };
 
@@ -91,6 +95,11 @@ type AttributeOption = {
   path: string;
 };
 
+type AssetOption = {
+  label: string;
+  value: string;
+};
+
 export default function AssetAnalysePage() {
   const [scripts, setScripts] = useState<AnalysisScript[]>([]);
   const [templates, setTemplates] = useState<ScriptTemplate[]>([]);
@@ -110,6 +119,7 @@ export default function AssetAnalysePage() {
     () => buildAttributeOptions(assets),
     [assets]
   );
+  const assetOptions = useMemo(() => buildAssetOptions(assets), [assets]);
 
   useEffect(() => {
     if (attributeOptions.length === 0) return;
@@ -217,6 +227,8 @@ export default function AssetAnalysePage() {
         attributeKey: null,
         constantValue: "",
         paramKey: null,
+        assetPath: null,
+        assetId: null,
         required: false,
       },
     ]);
@@ -638,7 +650,9 @@ export default function AssetAnalysePage() {
                                       ? "HTTP Query"
                                       : binding.sourceType === "body"
                                         ? "Request Body"
-                                        : "Constant"
+                                        : binding.sourceType === "asset"
+                                          ? "Asset"
+                                          : "Constant"
                                 ) : (
                                   <TextField
                                     select
@@ -672,6 +686,14 @@ export default function AssetAnalysePage() {
                                                   event.target.value === "body"
                                                     ? item.paramKey ?? ""
                                                     : null,
+                                                assetPath:
+                                                  event.target.value === "asset"
+                                                    ? item.assetPath ?? null
+                                                    : null,
+                                                assetId:
+                                                  event.target.value === "asset"
+                                                    ? item.assetId ?? null
+                                                    : null,
                                               }
                                             : item
                                         )
@@ -683,75 +705,100 @@ export default function AssetAnalysePage() {
                                     <MenuItem value="constant">Constant</MenuItem>
                                     <MenuItem value="query">HTTP Query</MenuItem>
                                     <MenuItem value="body">Request Body</MenuItem>
+                                    <MenuItem value="asset">Asset</MenuItem>
                                   </TextField>
                                 )}
                               </TableCell>
                               <TableCell>
-                                {binding.sourceType === "attribute" ? (
-                                  <TextField
-                                    size="small"
-                                    label="Type"
-                                    aria-label="Attribute type"
-                                    title="Attribute type"
-                                    value={
-                                      binding.attributeKey
-                                        ? attributeOptions.find(
-                                            (option) =>
-                                              option.value ===
-                                              binding.attributeKey
-                                          )?.dataType ?? ""
-                                        : binding.attributePath
-                                          ? attributeOptions.find(
-                                              (option) =>
-                                                option.path ===
-                                                binding.attributePath
-                                            )?.dataType ?? ""
-                                          : ""
-                                    }
-                                    InputProps={{ readOnly: true }}
-                                    fullWidth
-                                  />
-                                ) : isTemplateSelected ? (
-                                  <TextField
-                                    size="small"
-                                    label="Data type"
-                                    aria-label="Data type"
-                                    title="Data type"
-                                    value={binding.constantType}
-                                    InputProps={{ readOnly: true }}
-                                    fullWidth
-                                  />
-                                ) : (
-                                  <TextField
-                                    select
-                                    size="small"
-                                    label="Data type"
-                                    aria-label="Data type"
-                                    title="Data type"
-                                    value={binding.constantType}
-                                    onChange={(event) =>
-                                      setBindings((prev) =>
-                                        prev.map((item, idx) =>
-                                          idx === index
-                                            ? {
-                                                ...item,
-                                                constantType: event.target
-                                                  .value as AnalysisBindingRow["constantType"],
-                                                constantValue: "",
-                                              }
-                                            : item
+                                {(() => {
+                                  if (binding.sourceType === "attribute") {
+                                    return (
+                                      <TextField
+                                        size="small"
+                                        label="Type"
+                                        aria-label="Attribute type"
+                                        title="Attribute type"
+                                        value={
+                                          binding.attributeKey
+                                            ? attributeOptions.find(
+                                                (option) =>
+                                                  option.value ===
+                                                  binding.attributeKey
+                                              )?.dataType ?? ""
+                                            : binding.attributePath
+                                              ? attributeOptions.find(
+                                                  (option) =>
+                                                    option.path ===
+                                                    binding.attributePath
+                                                )?.dataType ?? ""
+                                              : ""
+                                        }
+                                        InputProps={{ readOnly: true }}
+                                        fullWidth
+                                      />
+                                    );
+                                  }
+
+                                  if (binding.sourceType === "asset") {
+                                    return (
+                                      <TextField
+                                        size="small"
+                                        label="Type"
+                                        aria-label="Asset type"
+                                        title="Asset type"
+                                        value="asset"
+                                        InputProps={{ readOnly: true }}
+                                        fullWidth
+                                      />
+                                    );
+                                  }
+
+                                  if (isTemplateSelected) {
+                                    return (
+                                      <TextField
+                                        size="small"
+                                        label="Data type"
+                                        aria-label="Data type"
+                                        title="Data type"
+                                        value={binding.constantType}
+                                        InputProps={{ readOnly: true }}
+                                        fullWidth
+                                      />
+                                    );
+                                  }
+
+                                  return (
+                                    <TextField
+                                      select
+                                      size="small"
+                                      label="Data type"
+                                      aria-label="Data type"
+                                      title="Data type"
+                                      value={binding.constantType}
+                                      onChange={(event) =>
+                                        setBindings((prev) =>
+                                          prev.map((item, idx) =>
+                                            idx === index
+                                              ? {
+                                                  ...item,
+                                                  constantType: event.target
+                                                    .value as AnalysisBindingRow["constantType"],
+                                                  constantValue: "",
+                                                }
+                                              : item
+                                          )
                                         )
-                                      )
-                                    }
-                                    fullWidth
-                                  >
-                                    <MenuItem value="string">String</MenuItem>
-                                    <MenuItem value="number">Number</MenuItem>
-                                    <MenuItem value="boolean">Boolean</MenuItem>
-                                    <MenuItem value="array">Array</MenuItem>
-                                    <MenuItem value="object">Object</MenuItem>
-                                  </TextField>
-                                )}
+                                      }
+                                      fullWidth
+                                    >
+                                      <MenuItem value="string">String</MenuItem>
+                                      <MenuItem value="number">Number</MenuItem>
+                                      <MenuItem value="boolean">Boolean</MenuItem>
+                                      <MenuItem value="array">Array</MenuItem>
+                                      <MenuItem value="object">Object</MenuItem>
+                                    </TextField>
+                                  );
+                                })()}
                               </TableCell>
                               <TableCell>
                                 {(() => {
@@ -824,6 +871,56 @@ export default function AssetAnalysePage() {
                                             label="Asset attribute"
                                             aria-label="Asset attribute"
                                             title="Asset attribute"
+                                          />
+                                        )}
+                                        fullWidth
+                                      />
+                                    );
+                                  }
+
+                                  if (binding.sourceType === "asset") {
+                                    return (
+                                      <Autocomplete
+                                        options={assetOptions}
+                                        value={
+                                          binding.assetId
+                                            ? assetOptions.find(
+                                                (option) =>
+                                                  option.value ===
+                                                  binding.assetId
+                                              ) ?? null
+                                            : binding.assetPath
+                                              ? assetOptions.find(
+                                                  (option) =>
+                                                    option.label ===
+                                                    binding.assetPath
+                                                ) ?? null
+                                              : null
+                                        }
+                                        onChange={(_, value) =>
+                                          setBindings((prev) =>
+                                            prev.map((item, idx) =>
+                                              idx === index
+                                                ? {
+                                                    ...item,
+                                                    assetPath: value?.label ?? null,
+                                                    assetId: value?.value ?? null,
+                                                  }
+                                                : item
+                                            )
+                                          )
+                                        }
+                                        getOptionLabel={(option) => option.label}
+                                        isOptionEqualToValue={(option, value) =>
+                                          option.value === value.value
+                                        }
+                                        renderInput={(params) => (
+                                          <TextField
+                                            {...params}
+                                            size="small"
+                                            label="Asset"
+                                            aria-label="Asset"
+                                            title="Asset"
                                           />
                                         )}
                                         fullWidth
@@ -1088,6 +1185,18 @@ function normalizeBindings(
             ? existing?.paramKey ?? input.paramKey ?? ""
             : input.paramKey ?? ""
           : null,
+      assetPath:
+        sourceType === "asset"
+          ? keepExisting
+            ? existing?.assetPath ?? input.assetPath ?? null
+            : input.assetPath ?? null
+          : null,
+      assetId:
+        sourceType === "asset"
+          ? keepExisting
+            ? existing?.assetId ?? input.assetId ?? null
+            : input.assetId ?? null
+          : null,
       required: input.required ?? existing?.required ?? false,
       attributePath:
         sourceType === "attribute"
@@ -1149,6 +1258,29 @@ function buildAttributeOptions(assets: AssetListItem[]): AttributeOption[] {
   });
 
   return options.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function buildAssetOptions(assets: AssetListItem[]): AssetOption[] {
+  const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+
+  const buildPath = (assetId: string) => {
+    const parts: string[] = [];
+    let current = assetMap.get(assetId);
+    while (current) {
+      parts.unshift(current.name);
+      current = current.parentAssetId
+        ? assetMap.get(current.parentAssetId)
+        : undefined;
+    }
+    return parts.join(".");
+  };
+
+  return assets
+    .map((asset) => ({
+      label: buildPath(asset.id),
+      value: asset.id,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function resolveLegacyBinding(

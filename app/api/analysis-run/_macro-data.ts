@@ -27,6 +27,14 @@ export type MacroData = {
     parentAssetId: string | null;
     assetAttributeTemplateId: string | null;
   }>;
+  assetsById: Record<string, {
+    id: string;
+    name: string;
+    description: string | null;
+    parentAssetId: string | null;
+    assetAttributeTemplateId: string | null;
+    path: string;
+  }>;
   attributesByPath: Record<string, {
     assetId: string;
     templateItemId: string;
@@ -47,6 +55,18 @@ export type MacroData = {
     value: unknown | null;
     path: string;
   }>>;
+  eventsById: Record<string, {
+    id: string;
+    assetId: string;
+    assetPath: string | null;
+    parentEventId: string | null;
+    eventCode: string;
+    status: string;
+    startTimestamp: string;
+    endTimestamp: string | null;
+    durationSeconds: number | null;
+    context: unknown | null;
+  }>;
 };
 
 function buildAssetPath(assetId: string, map: Map<string, AssetRow>) {
@@ -70,6 +90,7 @@ export async function buildMacroData(): Promise<MacroData> {
 
   const assetMap = new Map(assets.map((asset) => [asset.id, asset as AssetRow]));
   const assetsByPath: MacroData["assetsByPath"] = {};
+  const assetsById: MacroData["assetsById"] = {};
   const attributesByPath: MacroData["attributesByPath"] = {};
   const attributesByAssetPath: MacroData["attributesByAssetPath"] = {};
 
@@ -81,6 +102,14 @@ export async function buildMacroData(): Promise<MacroData> {
       description: asset.description ?? null,
       parentAssetId: asset.parentAssetId ?? null,
       assetAttributeTemplateId: asset.assetAttributeTemplateId ?? null,
+    };
+    assetsById[asset.id] = {
+      id: asset.id,
+      name: asset.name,
+      description: asset.description ?? null,
+      parentAssetId: asset.parentAssetId ?? null,
+      assetAttributeTemplateId: asset.assetAttributeTemplateId ?? null,
+      path,
     };
 
     attributesByAssetPath[path] = [];
@@ -102,5 +131,37 @@ export async function buildMacroData(): Promise<MacroData> {
     });
   });
 
-  return { assetsByPath, attributesByPath, attributesByAssetPath };
+  const events = await prisma.event.findMany({
+    select: {
+      id: true,
+      assetId: true,
+      parentEventId: true,
+      eventCode: true,
+      status: true,
+      startTimestamp: true,
+      endTimestamp: true,
+      durationSeconds: true,
+      context: true,
+    },
+  });
+
+  const eventsById: MacroData["eventsById"] = {};
+  events.forEach((event) => {
+    eventsById[event.id] = {
+      id: event.id,
+      assetId: event.assetId,
+      assetPath: assetsById[event.assetId]?.path ?? null,
+      parentEventId: event.parentEventId ?? null,
+      eventCode: event.eventCode,
+      status: event.status,
+      startTimestamp: event.startTimestamp.toISOString(),
+      endTimestamp: event.endTimestamp
+        ? event.endTimestamp.toISOString()
+        : null,
+      durationSeconds: event.durationSeconds ?? null,
+      context: event.context ?? null,
+    };
+  });
+
+  return { assetsByPath, assetsById, attributesByPath, attributesByAssetPath, eventsById };
 }

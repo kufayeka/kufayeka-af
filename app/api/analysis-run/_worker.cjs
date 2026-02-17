@@ -2,7 +2,8 @@ const { parentPort } = require("worker_threads");
 const ivm = require("isolated-vm");
 const { installMacros } = require("./_macros.cjs");
 
-const isolate = new ivm.Isolate({ memoryLimit: 64 });
+const memoryLimit = Number(process.env.ANALYSIS_ISOLATE_MB ?? 64);
+const isolate = new ivm.Isolate({ memoryLimit });
 const contextPromise = isolate.createContext();
 let cachedScriptSource = null;
 let cachedScript = null;

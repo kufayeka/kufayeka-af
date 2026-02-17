@@ -12,6 +12,15 @@ const pump = Asset.get("Plant A.Pump-01");
 return { name: pump?.name };
 ```
 
+### `Asset.getById(id)`
+Ambil data asset berdasarkan id.
+
+**Contoh:**
+```js
+const asset = Asset.getById("uuid-here");
+return { name: asset?.name };
+```
+
 ### `Asset.list()`
 Ambil semua asset (flat list).
 
@@ -91,7 +100,99 @@ Attribute.setMany([
 return { ok: true };
 ```
 
+## Historian
+### `Historian.insertMany(items)`
+Tulis data historian (timeseries) untuk banyak tag. Sekaligus update nilai latest pada attribute.
+
+**Items:**
+- `path` (required)
+- `value` (required)
+- `ts` (optional, default now, ISO string atau Date)
+
+**Contoh:**
+```js
+Historian.insertMany([
+  { path: "Plant A.Pump-01.pressure", value: 7.25, ts: "2026-02-12T08:00:00Z" },
+  { path: "Plant A.Pump-01.temperature", value: 82 }
+]);
+return { ok: true };
+```
+
+### `Historian.getMany(paths, start, end, bucket, options)`
+Ambil historian untuk banyak tag sekaligus. Saat dipanggil, response API run akan berisi data historian (bukan `result` dari script).
+
+**Params:**
+- `paths` (required array)
+- `start` (required, ISO string)
+- `end` (required, ISO string)
+- `bucket` (optional, contoh: `"1 hour"`)
+- `options` (optional): `{ format: "iso" }` atau `{ iso: true }`
+
+**Contoh:**
+```js
+Historian.getMany(
+  ["Plant A.Pump-01.pressure", "Plant A.Pump-01.temperature"],
+  "2026-02-12T00:00:00Z",
+  "2026-02-12T06:00:00Z",
+  "1 hour",
+  { format: "iso" }
+);
+```
+
 ## Notes
 - Path format: `Root.Child.Asset.Attribute`
 - `Attribute.set` **tidak** menulis ke historian.
 - Error tipe value akan memunculkan response error dari API run.
+
+## Event
+### `Event.get(id)`
+Ambil event berdasarkan id.
+
+Catatan: data event diambil dari cache macro saat script dijalankan.
+
+**Contoh:**
+```js
+const evt = Event.get(activeEventId);
+return { status: evt?.status };
+```
+
+### `Event.generate(payload)`
+Buat event baru. Jika `payload.id` kosong, sistem akan membuat UUID.
+
+**Payload:**
+- `id` (optional)
+- `timestamp` (optional, default now)
+- `parentEventId` (optional)
+- `asset` (path asset, object asset, atau `assetVar.value` dari binding)
+- `eventCode` (optional, default: `PRODUCTION`)
+- `status` (optional, default: `open`)
+- `context` (optional JSON)
+
+**Contoh:**
+```js
+const eventId = Event.generate({
+  timestamp: new Date().toISOString(),
+  asset: "Jasuindo.OffsetPrinter.Taiyo1",
+  eventCode: "PRODUCTION",
+  context: { shift: "A" }
+});
+```
+
+### `Event.end(payload)`
+Tutup event dan hitung durasi.
+
+**Payload:**
+- `id` (required)
+- `timestamp` (optional, default now)
+
+**Contoh:**
+```js
+Event.end({ id: eventId, timestamp: new Date().toISOString() });
+```
+
+## Binding Types
+- `attribute`: nilai attribute
+- `constant`: nilai konstan
+- `query`: dari HTTP query string
+- `body`: dari request body JSON
+- `asset`: object asset (path + id)

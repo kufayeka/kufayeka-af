@@ -28,6 +28,7 @@ model Asset {
   children                  Asset[]                    @relation("AssetHierarchy")
   assetAttributeTemplate    AssetAttributeTemplate?    @relation(fields: [assetAttributeTemplateId], references: [id])
   attributes                AssetAttribute[]
+  events                    Event[]
 
   @@map("assets")
 }
@@ -116,4 +117,25 @@ model AnalysisScriptTemplate {
   scripts     AnalysisScript[]
 
   @@map("analysis_script_templates")
+}
+
+model Event {
+  id              String   @id @default(uuid()) @db.Uuid
+  assetId         String   @db.Uuid
+  parentEventId   String?  @db.Uuid
+  eventCode       String   @db.VarChar(255)
+  status          String   @db.VarChar(50)
+  startTimestamp  DateTime @db.Timestamptz(6)
+  endTimestamp    DateTime? @db.Timestamptz(6)
+  durationSeconds Int?
+  context         Json?    @db.JsonB
+
+  asset        Asset  @relation(fields: [assetId], references: [id])
+  parentEvent  Event? @relation("EventHierarchy", fields: [parentEventId], references: [id])
+  childEvents  Event[] @relation("EventHierarchy")
+
+  @@index([assetId, startTimestamp])
+  @@index([status])
+  @@index([eventCode])
+  @@map("events")
 }

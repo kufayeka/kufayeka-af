@@ -1,7 +1,7 @@
 import { prisma } from "../../../lib/prisma";
-import { resolveTagPath } from "../analysis/_utils";
+import { resolveAssetPath, resolveTagPath } from "../analysis/_utils";
 
-type BindingSourceType = "attribute" | "constant" | "query" | "body";
+type BindingSourceType = "attribute" | "constant" | "query" | "body" | "asset";
 
 type BindingDataType = "number" | "boolean" | "string" | "array" | "object";
 
@@ -13,6 +13,8 @@ type BindingInput = {
   attributePath?: string | null;
   attributeKey?: string | null;
   paramKey?: string | null;
+  assetPath?: string | null;
+  assetId?: string | null;
   required?: boolean;
 };
 
@@ -234,6 +236,50 @@ async function resolveAttributeBinding(input: BindingInput): Promise<BindingValu
   };
 }
 
+async function resolveAssetBinding(input: BindingInput): Promise<BindingValue> {
+  if (input.assetId) {
+    const asset = await prisma.asset.findUnique({
+      where: { id: input.assetId },
+    });
+    if (!asset) {
+      throw new BindingValidationError(
+        `Asset not found for ${input.variableName}`
+      );
+    }
+    return {
+      sourceType: "asset",
+      value: asset,
+      assetId: asset.id,
+      path: input.assetPath ?? null,
+      required: input.required ?? false,
+    };
+  }
+
+  if (!input.assetPath) {
+    if (!input.required) {
+      return {
+        sourceType: "asset",
+        value: null,
+        assetId: null,
+        path: null,
+        required: input.required ?? false,
+      };
+    }
+    throw new BindingValidationError(
+      `Asset path required for ${input.variableName}`
+    );
+  }
+
+  const resolved = await resolveAssetPath(input.assetPath.split("."));
+  return {
+    sourceType: "asset",
+    value: resolved.asset,
+    assetId: resolved.asset.id,
+    path: input.assetPath ?? null,
+    required: input.required ?? false,
+  };
+}
+
 type BindingContext = {
   query?: URLSearchParams;
   body?: unknown;
@@ -306,6 +352,11 @@ export async function buildVariableBindings(
         required: input.required ?? false,
         path: input.paramKey ?? null,
       };
+      continue;
+    }
+
+    if (input.sourceType === "asset") {
+      bindings[variableName] = await resolveAssetBinding(input);
       continue;
     }
 

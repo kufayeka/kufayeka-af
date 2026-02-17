@@ -79,10 +79,17 @@ function getAvailableWorker() {
 }
 
 export type PoolWriteItem = {
-  path: string;
-  value: unknown;
+  path?: string;
+  value?: unknown;
   target?: string;
   ts?: string | Date | null;
+  id?: string;
+  timestamp?: string | Date | null;
+  parentEventId?: string | null;
+  asset?: unknown;
+  eventCode?: string | null;
+  status?: string | null;
+  context?: unknown | null;
 };
 
 export function runInPool(
