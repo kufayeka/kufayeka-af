@@ -15,6 +15,11 @@ enum AssetAttributeDataType {
   OBJECT
 }
 
+enum AnalysisTriggerType {
+  ON_REQUEST
+  SCHEDULED
+}
+
 model Asset {
   id                        String                     @id @default(uuid()) @db.Uuid
   name                      String                     @db.VarChar(255)
@@ -97,10 +102,13 @@ model AnalysisScript {
   script      String   @db.Text
   inputs      Json?    @db.JsonB
   templateId  String?  @db.Uuid
+  triggerType AnalysisTriggerType @default(ON_REQUEST)
+  cronId      String?  @db.Uuid
   createdAt   DateTime @default(now()) @db.Timestamp(6)
   updatedAt   DateTime @updatedAt @db.Timestamp(6)
 
   template    AnalysisScriptTemplate? @relation(fields: [templateId], references: [id])
+  cron        AnalysisCron? @relation(fields: [cronId], references: [id])
 
   @@map("analysis_scripts")
 }
@@ -111,12 +119,27 @@ model AnalysisScriptTemplate {
   description String?  @db.Text
   script      String   @db.Text
   inputs      Json?    @db.JsonB
+  triggerType AnalysisTriggerType @default(ON_REQUEST)
   createdAt   DateTime @default(now()) @db.Timestamp(6)
   updatedAt   DateTime @updatedAt @db.Timestamp(6)
 
   scripts     AnalysisScript[]
 
   @@map("analysis_script_templates")
+}
+
+model AnalysisCron {
+  id             String         @id @default(uuid()) @db.Uuid
+  name           String         @db.VarChar(255)
+  description    String?        @db.Text
+  intervalSecond Int            @default(60)
+  isRunning      Boolean        @default(false)
+  createdAt      DateTime       @default(now()) @db.Timestamp(6)
+  updatedAt      DateTime       @updatedAt @db.Timestamp(6)
+
+  scripts        AnalysisScript[]
+
+  @@map("analysis_crons")
 }
 
 model Event {

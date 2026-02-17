@@ -26,6 +26,8 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Tab,
+  Tabs,
   TextField,
   Typography,
   createFilterOptions,
@@ -77,6 +79,12 @@ type AnalysisScript = {
   script: string;
   inputs: AnalysisBindingRow[] | null;
   templateId: string | null;
+  triggerType: "ON_REQUEST" | "SCHEDULED";
+  cronId: string | null;
+  cron?: {
+    id: string;
+    name: string;
+  } | null;
 };
 
 type ScriptTemplate = {
@@ -85,6 +93,21 @@ type ScriptTemplate = {
   description: string | null;
   script: string;
   inputs: AnalysisInputRow[] | null;
+  triggerType: "ON_REQUEST" | "SCHEDULED";
+};
+
+type AnalysisCron = {
+  id: string;
+  name: string;
+  description: string | null;
+  intervalSecond: number;
+  isRunning: boolean;
+  scripts?: Array<{
+    id: string;
+    name: string;
+    triggerType: "ON_REQUEST" | "SCHEDULED";
+    cronId: string | null;
+  }>;
 };
 
 type AttributeOption = {
@@ -102,7 +125,9 @@ type AssetOption = {
 };
 
 export default function AssetAnalysePage() {
+  const [activeTab, setActiveTab] = useState<"scripts" | "crons">("scripts");
   const [scripts, setScripts] = useState<AnalysisScript[]>([]);
+  const [crons, setCrons] = useState<AnalysisCron[]>([]);
   const [templates, setTemplates] = useState<ScriptTemplate[]>([]);
   const [selectedScriptId, setSelectedScriptId] = useState<string | null>(null);
   const [scriptForm, setScriptForm] = useState({
@@ -110,6 +135,8 @@ export default function AssetAnalysePage() {
     description: "",
     script: "// Write analysis script here\n",
     templateId: "",
+    triggerType: "ON_REQUEST" as "ON_REQUEST" | "SCHEDULED",
+    cronId: "",
   });
   const [bindings, setBindings] = useState<AnalysisBindingRow[]>([]);
   const [scriptSearch, setScriptSearch] = useState("");
@@ -187,6 +214,8 @@ export default function AssetAnalysePage() {
       description: script.description ?? "",
       script: template?.script ?? script.script,
       templateId: script.templateId ?? "",
+      triggerType: script.triggerType ?? "ON_REQUEST",
+      cronId: script.cronId ?? "",
     });
     if (template) {
       setBindings(
@@ -212,6 +241,8 @@ export default function AssetAnalysePage() {
       description: "",
       script: "// Write analysis script here\n",
       templateId: "",
+      triggerType: "ON_REQUEST",
+      cronId: "",
     });
     setBindings([]);
   };
@@ -262,8 +293,16 @@ export default function AssetAnalysePage() {
             name: scriptForm.name,
             description: scriptForm.description || null,
             script: selectedTemplate?.script ?? scriptForm.script,
-            inputs: bindings,
+            inputs: sanitizeBindingsForTriggerType(
+              bindings,
+              scriptForm.triggerType
+            ),
             templateId: scriptForm.templateId || null,
+            triggerType: scriptForm.triggerType,
+            cronId:
+              scriptForm.triggerType === "SCHEDULED"
+                ? scriptForm.cronId || null
+                : null,
           }),
         }
       );
@@ -336,6 +375,15 @@ export default function AssetAnalysePage() {
     setTemplates(data.templates);
   };
 
+  const refreshCrons = async () => {
+    const response = await fetch("/api/analysis-crons");
+    if (!response.ok) {
+      throw new Error("Gagal mengambil cron jobs");
+    }
+    const data = (await response.json()) as { crons: AnalysisCron[] };
+    setCrons(data.crons);
+  };
+
   const refreshAssets = async () => {
     const response = await fetch("/api/assets");
     if (!response.ok) {
@@ -350,6 +398,7 @@ export default function AssetAnalysePage() {
     const bootstrap = async () => {
       try {
         await Promise.all([refreshScripts(), refreshAssets(), refreshTemplates()]);
+        await refreshCrons();
       } catch (error) {
         console.error(error);
         setErrorMessage("Gagal memuat data analysis.");
@@ -365,6 +414,9 @@ export default function AssetAnalysePage() {
         console.error(error);
       });
       refreshTemplates().catch((error) => {
+        console.error(error);
+      });
+      refreshCrons().catch((error) => {
         console.error(error);
       });
     };
@@ -383,6 +435,8 @@ export default function AssetAnalysePage() {
       description: selectedScript.description ?? "",
       script: selectedScript.script,
       templateId: selectedScript.templateId ?? "",
+      triggerType: selectedScript.triggerType ?? "ON_REQUEST",
+      cronId: selectedScript.cronId ?? "",
     });
   }, [selectedScript]);
 
@@ -394,6 +448,7 @@ export default function AssetAnalysePage() {
       setScriptForm((prev) => ({
         ...prev,
         script: selectedTemplate.script,
+        triggerType: selectedTemplate.triggerType ?? prev.triggerType,
       }));
     }
   }, [selectedTemplate, attributeOptions]);
@@ -402,6 +457,17 @@ export default function AssetAnalysePage() {
     <Box sx={{ height: "100vh", display: "flex", flexDirection: "column" }}>
       <CssBaseline />
       <AppHeader />
+      <Box sx={{ px: 3, pt: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+        <Tabs
+          value={activeTab}
+          onChange={(_, value) => setActiveTab(value)}
+          aria-label="Analysis tabs"
+        >
+          <Tab value="scripts" label="Scripts" />
+          <Tab value="crons" label="Cron Generator" />
+        </Tabs>
+      </Box>
+      {activeTab === "scripts" ? (
       <Box sx={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <Box
           component="aside"
@@ -452,50 +518,12 @@ export default function AssetAnalysePage() {
           <Divider />
           <Box sx={{ flex: 1, overflow: "auto" }}>
             <Stack spacing={0.5} sx={{ p: 2 }} aria-label="Daftar analysis">
-              {filteredScripts.map((item) => (
-                <Card
-                  key={item.id}
-                  variant="outlined"
-                  sx={{
-                    cursor: "pointer",
-                    borderColor:
-                      item.id === selectedScriptId ? "primary.main" : "divider",
-                    bgcolor:
-                      item.id === selectedScriptId
-                        ? "action.selected"
-                        : "background.paper",
-                    "&:hover": {
-                      borderColor: "primary.light",
-                      bgcolor: "action.hover",
-                    },
-                  }}
-                  onClick={() => handleSelectScript(item)}
-                >
-                  <CardContent sx={{ p: 1, "&:last-child": { pb: 1 } }}>
-                    <Stack
-                      direction="row"
-                      justifyContent="space-between"
-                      alignItems="center"
-                    >
-                      <Box>
-                        <Typography variant="body2" fontWeight="bold">
-                          {item.name}
-                        </Typography>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ display: "block", lineHeight: 1.2 }}
-                        >
-                          {item.description || "No description"}
-                        </Typography>
-                      </Box>
-                      {item.id === selectedScriptId && (
-                        <CheckIcon color="primary" fontSize="small" />
-                      )}
-                    </Stack>
-                  </CardContent>
-                </Card>
-              ))}
+              {renderScriptHierarchy({
+                scripts: filteredScripts,
+                crons,
+                selectedScriptId,
+                onSelect: handleSelectScript,
+              })}
             </Stack>
           </Box>
         </Box>
@@ -552,13 +580,23 @@ export default function AssetAnalysePage() {
                           ...prev,
                           templateId: nextTemplateId,
                           script: nextTemplate?.script ?? prev.script,
+                          triggerType:
+                            nextTemplate?.triggerType ?? prev.triggerType,
+                          cronId:
+                            (nextTemplate?.triggerType ?? prev.triggerType) ===
+                            "SCHEDULED"
+                              ? prev.cronId
+                              : "",
                         }));
                         if (nextTemplate) {
                           setBindings((current) =>
-                            normalizeBindings(
-                              nextTemplate.inputs ?? [],
-                              current,
-                              attributeOptions
+                            sanitizeBindingsForTriggerType(
+                              normalizeBindings(
+                                nextTemplate.inputs ?? [],
+                                current,
+                                attributeOptions
+                              ),
+                              nextTemplate.triggerType ?? "ON_REQUEST"
                             )
                           );
                         }
@@ -569,6 +607,52 @@ export default function AssetAnalysePage() {
                       {templates.map((item) => (
                         <MenuItem key={item.id} value={item.id}>
                           {item.name}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                    <TextField
+                      select
+                      label="Type"
+                      aria-label="Analysis trigger type"
+                      title="Analysis trigger type"
+                      value={scriptForm.triggerType}
+                      onChange={(event) => {
+                        const nextTrigger = event.target.value as
+                          | "ON_REQUEST"
+                          | "SCHEDULED";
+                        setScriptForm((prev) => ({
+                          ...prev,
+                          triggerType: nextTrigger,
+                          cronId: nextTrigger === "SCHEDULED" ? prev.cronId : "",
+                        }));
+                        setBindings((current) =>
+                          sanitizeBindingsForTriggerType(current, nextTrigger)
+                        );
+                      }}
+                      fullWidth
+                    >
+                      <MenuItem value="ON_REQUEST">On Request</MenuItem>
+                      <MenuItem value="SCHEDULED">Scheduled</MenuItem>
+                    </TextField>
+                    <TextField
+                      select
+                      label="Assigned Cron"
+                      aria-label="Assigned cron"
+                      title="Assigned cron"
+                      value={scriptForm.cronId}
+                      onChange={(event) =>
+                        setScriptForm((prev) => ({
+                          ...prev,
+                          cronId: event.target.value,
+                        }))
+                      }
+                      fullWidth
+                      disabled={scriptForm.triggerType !== "SCHEDULED"}
+                    >
+                      <MenuItem value="">(No cron)</MenuItem>
+                      {crons.map((cron) => (
+                        <MenuItem key={cron.id} value={cron.id}>
+                          {cron.name} ({cron.intervalSecond}s)
                         </MenuItem>
                       ))}
                     </TextField>
@@ -715,8 +799,18 @@ export default function AssetAnalysePage() {
                                   >
                                     <MenuItem value="attribute">Attribute</MenuItem>
                                     <MenuItem value="constant">Constant</MenuItem>
-                                    <MenuItem value="query">HTTP Query</MenuItem>
-                                    <MenuItem value="body">Request Body</MenuItem>
+                                    <MenuItem
+                                      value="query"
+                                      disabled={scriptForm.triggerType === "SCHEDULED"}
+                                    >
+                                      HTTP Query
+                                    </MenuItem>
+                                    <MenuItem
+                                      value="body"
+                                      disabled={scriptForm.triggerType === "SCHEDULED"}
+                                    >
+                                      Request Body
+                                    </MenuItem>
                                     <MenuItem value="asset">Asset</MenuItem>
                                   </TextField>
                                 )}
@@ -1161,6 +1255,15 @@ export default function AssetAnalysePage() {
           </Stack>
         </Box>
       </Box>
+      ) : (
+        <CronGeneratorTab
+          crons={crons}
+          scripts={scripts}
+          onRefresh={refreshCrons}
+          onScriptsRefresh={refreshScripts}
+          onError={setErrorMessage}
+        />
+      )}
       {errorMessage ? (
         <Box sx={{ px: 3, pb: 2 }} aria-live="polite">
           <Typography color="error" variant="body2">
@@ -1168,6 +1271,393 @@ export default function AssetAnalysePage() {
           </Typography>
         </Box>
       ) : null}
+    </Box>
+  );
+}
+
+type HierarchyArgs = {
+  scripts: AnalysisScript[];
+  crons: AnalysisCron[];
+  selectedScriptId: string | null;
+  onSelect: (script: AnalysisScript) => void;
+};
+
+function renderScriptHierarchy({
+  scripts,
+  crons,
+  selectedScriptId,
+  onSelect,
+}: HierarchyArgs) {
+  const scriptsByCron = new Map<string | null, AnalysisScript[]>();
+  scripts.forEach((script) => {
+    const key = script.triggerType === "SCHEDULED" ? script.cronId : null;
+    const list = scriptsByCron.get(key) ?? [];
+    list.push(script);
+    scriptsByCron.set(key, list);
+  });
+
+  const children = new Map<string | null, AnalysisCron[]>();
+  crons.forEach((cron) => {
+    const list = children.get(null) ?? [];
+    list.push(cron);
+    children.set(null, list);
+  });
+
+  const renderScriptCard = (item: AnalysisScript, depth = 0) => (
+    <Card
+      key={item.id}
+      variant="outlined"
+      sx={{
+        ml: depth * 2,
+        cursor: "pointer",
+        borderColor: item.id === selectedScriptId ? "primary.main" : "divider",
+        bgcolor: item.id === selectedScriptId ? "action.selected" : "background.paper",
+        "&:hover": {
+          borderColor: "primary.light",
+          bgcolor: "action.hover",
+        },
+      }}
+      onClick={() => onSelect(item)}
+    >
+      <CardContent sx={{ p: 1, "&:last-child": { pb: 1 } }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Box>
+            <Typography variant="body2" fontWeight="bold">
+              {item.name}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {item.triggerType === "SCHEDULED" ? "Scheduled" : "On Request"}
+            </Typography>
+          </Box>
+          {item.id === selectedScriptId ? (
+            <CheckIcon color="primary" fontSize="small" />
+          ) : null}
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+
+  const renderCronNode = (cron: AnalysisCron, depth: number) => {
+    const scheduledScripts = (scriptsByCron.get(cron.id) ?? []).filter(
+      (item) => item.triggerType === "SCHEDULED"
+    );
+    return (
+      <Box key={cron.id} sx={{ ml: depth * 2 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+          {cron.name} ({cron.intervalSecond}s) {cron.isRunning ? "RUN" : "STOP"}
+        </Typography>
+        <Stack spacing={0.5}>
+          {scheduledScripts.map((item) => renderScriptCard(item, depth + 1))}
+        </Stack>
+      </Box>
+    );
+  };
+
+  const rootCrons = children.get(null) ?? [];
+  const onRequestScripts = (scriptsByCron.get(null) ?? []).filter(
+    (item) => item.triggerType !== "SCHEDULED"
+  );
+
+  return (
+    <>
+      <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
+        On Request
+      </Typography>
+      {onRequestScripts.map((item) => renderScriptCard(item))}
+      <Divider sx={{ my: 1 }} />
+      <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
+        Scheduled By Cron
+      </Typography>
+      {rootCrons.map((cron) => renderCronNode(cron, 0))}
+    </>
+  );
+}
+
+function sanitizeBindingsForTriggerType(
+  bindings: AnalysisBindingRow[],
+  triggerType: "ON_REQUEST" | "SCHEDULED"
+) {
+  if (triggerType !== "SCHEDULED") {
+    return bindings;
+  }
+  return bindings.map((binding) => {
+    if (binding.sourceType === "query" || binding.sourceType === "body") {
+      return {
+        ...binding,
+        sourceType: "constant",
+        paramKey: null,
+        constantType: "string",
+        constantValue: "",
+      };
+    }
+    return binding;
+  });
+}
+
+type CronGeneratorTabProps = {
+  crons: AnalysisCron[];
+  scripts: AnalysisScript[];
+  onRefresh: () => Promise<void>;
+  onScriptsRefresh: () => Promise<void>;
+  onError: (message: string | null) => void;
+};
+
+function CronGeneratorTab({
+  crons,
+  scripts,
+  onRefresh,
+  onScriptsRefresh,
+  onError,
+}: CronGeneratorTabProps) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    name: "",
+    description: "",
+    intervalSecond: 60,
+    isRunning: false,
+  });
+
+  const selected = useMemo(
+    () => crons.find((item) => item.id === selectedId) ?? null,
+    [crons, selectedId]
+  );
+
+  useEffect(() => {
+    if (!selected) {
+      return;
+    }
+    setForm({
+      name: selected.name,
+      description: selected.description ?? "",
+      intervalSecond: selected.intervalSecond,
+      isRunning: selected.isRunning,
+    });
+  }, [selected]);
+
+  const reset = () => {
+    setSelectedId(null);
+    setForm({
+      name: "",
+      description: "",
+      intervalSecond: 60,
+      isRunning: false,
+    });
+  };
+
+  const save = async () => {
+    if (!form.name.trim()) {
+      onError("Nama cron wajib diisi.");
+      return;
+    }
+    try {
+      const response = await fetch(
+        selectedId ? `/api/analysis-crons/${selectedId}` : "/api/analysis-crons",
+        {
+          method: selectedId ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: form.name,
+            description: form.description || null,
+            intervalSecond: form.intervalSecond,
+            isRunning: form.isRunning,
+          }),
+        }
+      );
+      if (!response.ok) {
+        throw new Error("Gagal menyimpan cron");
+      }
+      await Promise.all([onRefresh(), onScriptsRefresh()]);
+      onError(null);
+    } catch (error) {
+      console.error(error);
+      onError("Gagal menyimpan cron.");
+    }
+  };
+
+  const remove = async () => {
+    if (!selectedId) {
+      onError("Pilih cron terlebih dahulu.");
+      return;
+    }
+    if (!window.confirm("Hapus cron ini?")) {
+      return;
+    }
+    try {
+      const response = await fetch(`/api/analysis-crons/${selectedId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || "Gagal menghapus cron");
+      }
+      reset();
+      await Promise.all([onRefresh(), onScriptsRefresh()]);
+      onError(null);
+    } catch (error) {
+      console.error(error);
+      onError((error as Error).message);
+    }
+  };
+
+  const toggle = async (cronId: string, isRunning: boolean) => {
+    try {
+      const response = await fetch(`/api/analysis-crons/${cronId}/toggle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isRunning }),
+      });
+      if (!response.ok) {
+        throw new Error("Gagal update status cron");
+      }
+      await onRefresh();
+      onError(null);
+    } catch (error) {
+      console.error(error);
+      onError("Gagal update status cron.");
+    }
+  };
+
+  return (
+    <Box sx={{ display: "flex", flex: 1, overflow: "hidden" }}>
+      <Box
+        component="aside"
+        sx={{
+          width: "30%",
+          borderRight: "1px solid",
+          borderColor: "divider",
+          p: 2,
+          overflow: "auto",
+        }}
+      >
+        <Typography variant="subtitle1" gutterBottom>
+          Cron List
+        </Typography>
+        <Stack spacing={1}>
+          {crons.map((cron) => (
+            <Card
+              key={cron.id}
+              variant="outlined"
+              sx={{
+                cursor: "pointer",
+                borderColor: selectedId === cron.id ? "primary.main" : "divider",
+              }}
+              onClick={() => setSelectedId(cron.id)}
+            >
+              <CardContent sx={{ p: 1, "&:last-child": { pb: 1 } }}>
+                <Typography variant="body2" fontWeight="bold">
+                  {cron.name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {cron.intervalSecond}s - {cron.isRunning ? "RUN" : "STOP"}
+                </Typography>
+                <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void toggle(cron.id, true);
+                    }}
+                  >
+                    Start
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="warning"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void toggle(cron.id, false);
+                    }}
+                  >
+                    Stop
+                  </Button>
+                </Stack>
+              </CardContent>
+            </Card>
+          ))}
+        </Stack>
+      </Box>
+      <Box component="section" sx={{ width: "70%", p: 3, overflow: "auto" }}>
+        <Card variant="outlined">
+          <CardContent>
+            <Stack spacing={2}>
+              <Typography variant="h6">Cron Generator</Typography>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                <TextField
+                  label="Cron name"
+                  value={form.name}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                  fullWidth
+                />
+                <TextField
+                  label="Description"
+                  value={form.description}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, description: event.target.value }))
+                  }
+                  fullWidth
+                />
+              </Stack>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                <TextField
+                  type="number"
+                  label="Interval second"
+                  value={form.intervalSecond}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      intervalSecond: Math.max(1, Number(event.target.value || 1)),
+                    }))
+                  }
+                  fullWidth
+                />
+              </Stack>
+              <Stack direction="row" spacing={1}>
+                <Button variant="outlined" onClick={reset}>
+                  New Cron
+                </Button>
+                <Button variant="contained" onClick={() => void save()}>
+                  Save Cron
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={() => void remove()}
+                >
+                  Delete Cron
+                </Button>
+              </Stack>
+              <Divider />
+              <Typography variant="subtitle2">Assigned Scheduled Scripts</Typography>
+              <Stack spacing={0.5}>
+                {scripts
+                  .filter(
+                    (script) =>
+                      script.triggerType === "SCHEDULED" &&
+                      script.cronId === (selectedId ?? "")
+                  )
+                  .map((script) => (
+                    <Typography key={script.id} variant="body2">
+                      {script.name}
+                    </Typography>
+                  ))}
+                {scripts.filter(
+                  (script) =>
+                    script.triggerType === "SCHEDULED" &&
+                    script.cronId === (selectedId ?? "")
+                ).length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Belum ada script scheduled pada cron ini.
+                  </Typography>
+                ) : null}
+              </Stack>
+            </Stack>
+          </CardContent>
+        </Card>
+      </Box>
     </Box>
   );
 }

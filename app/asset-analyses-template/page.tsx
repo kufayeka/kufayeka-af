@@ -59,6 +59,7 @@ type ScriptTemplate = {
   description: string | null;
   script: string;
   inputs: AnalysisInputRow[] | null;
+  triggerType: "ON_REQUEST" | "SCHEDULED";
 };
 
 type AttributeOption = {
@@ -86,6 +87,7 @@ export default function AssetAnalysesTemplatePage() {
     description: "",
     script: "// Write analysis script template here\n",
     inputs: [] as AnalysisInputRow[],
+    triggerType: "ON_REQUEST" as "ON_REQUEST" | "SCHEDULED",
   });
   const [assets, setAssets] = useState<AssetListItem[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -151,6 +153,7 @@ export default function AssetAnalysesTemplatePage() {
       description: template.description ?? "",
       script: template.script,
       inputs: normalizeTemplateInputs(template.inputs, attributeOptions),
+      triggerType: template.triggerType ?? "ON_REQUEST",
     });
   };
 
@@ -202,6 +205,7 @@ export default function AssetAnalysesTemplatePage() {
       description: "",
       script: "// Write analysis script template here\n",
       inputs: [],
+      triggerType: "ON_REQUEST",
     });
   };
 
@@ -228,7 +232,11 @@ export default function AssetAnalysesTemplatePage() {
             name: templateForm.name,
             description: templateForm.description || null,
             script: templateForm.script,
-            inputs: templateForm.inputs,
+            inputs: sanitizeInputsForTriggerType(
+              templateForm.inputs,
+              templateForm.triggerType
+            ),
+            triggerType: templateForm.triggerType,
           }),
         }
       );
@@ -331,6 +339,7 @@ export default function AssetAnalysesTemplatePage() {
       description: selectedTemplate.description ?? "",
       script: selectedTemplate.script,
       inputs: normalizeTemplateInputs(selectedTemplate.inputs, attributeOptions),
+      triggerType: selectedTemplate.triggerType ?? "ON_REQUEST",
     });
   }, [selectedTemplate, attributeOptions]);
 
@@ -464,6 +473,29 @@ export default function AssetAnalysesTemplatePage() {
                       }
                       fullWidth
                     />
+                    <TextField
+                      select
+                      label="Type"
+                      aria-label="Template trigger type"
+                      title="Template trigger type"
+                      value={templateForm.triggerType}
+                      onChange={(event) => {
+                        const nextTriggerType = event.target
+                          .value as "ON_REQUEST" | "SCHEDULED";
+                        setTemplateForm((prev) => ({
+                          ...prev,
+                          triggerType: nextTriggerType,
+                          inputs: sanitizeInputsForTriggerType(
+                            prev.inputs,
+                            nextTriggerType
+                          ),
+                        }));
+                      }}
+                      fullWidth
+                    >
+                      <MenuItem value="ON_REQUEST">On Request</MenuItem>
+                      <MenuItem value="SCHEDULED">Scheduled</MenuItem>
+                    </TextField>
                   </Stack>
                   <Stack direction="row" justifyContent="space-between">
                     <Typography variant="subtitle1">Variable bindings</Typography>
@@ -576,8 +608,18 @@ export default function AssetAnalysesTemplatePage() {
                                 >
                                   <MenuItem value="attribute">Attribute</MenuItem>
                                   <MenuItem value="constant">Constant</MenuItem>
-                                  <MenuItem value="query">HTTP Query</MenuItem>
-                                  <MenuItem value="body">Request Body</MenuItem>
+                                  <MenuItem
+                                    value="query"
+                                    disabled={templateForm.triggerType === "SCHEDULED"}
+                                  >
+                                    HTTP Query
+                                  </MenuItem>
+                                  <MenuItem
+                                    value="body"
+                                    disabled={templateForm.triggerType === "SCHEDULED"}
+                                  >
+                                    Request Body
+                                  </MenuItem>
                                   <MenuItem value="asset">Asset</MenuItem>
                                 </TextField>
                               </TableCell>
@@ -986,6 +1028,27 @@ function normalizeTemplateInputs(
       attributeOptions
     )
   );
+}
+
+function sanitizeInputsForTriggerType(
+  inputs: AnalysisInputRow[],
+  triggerType: "ON_REQUEST" | "SCHEDULED"
+) {
+  if (triggerType !== "SCHEDULED") {
+    return inputs;
+  }
+  return inputs.map((input) => {
+    if (input.sourceType === "query" || input.sourceType === "body") {
+      return {
+        ...input,
+        sourceType: "constant",
+        paramKey: null,
+        constantType: "string",
+        constantValue: "",
+      };
+    }
+    return input;
+  });
 }
 
 function buildAssetOptions(assets: AssetListItem[]): AssetOption[] {

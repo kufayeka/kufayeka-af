@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../lib/prisma";
+import {
+  normalizeTriggerType,
+  validateInputsForTriggerType,
+} from "../analysis-run/_validation";
 
 export const runtime = "nodejs";
 
@@ -17,6 +21,7 @@ export async function POST(request: Request) {
     description?: string | null;
     script?: string;
     inputs?: unknown;
+    triggerType?: "ON_REQUEST" | "SCHEDULED";
   };
 
   if (!body.name || !body.script) {
@@ -26,12 +31,16 @@ export async function POST(request: Request) {
     );
   }
 
+  const triggerType = normalizeTriggerType(body.triggerType);
+  validateInputsForTriggerType(triggerType, body.inputs);
+
   const template = await prisma.analysisScriptTemplate.create({
     data: {
       name: body.name,
       description: body.description ?? null,
       script: body.script,
       inputs: body.inputs ?? null,
+      triggerType,
     },
   });
 

@@ -50,7 +50,12 @@ export async function GET(request: Request) {
 
   try {
     const result = await waitForAnalysisRunJob(job, waitMs);
-    return Response.json(result);
+    return Response.json({
+      accepted: true,
+      jobId: job.id,
+      status: "completed",
+      result,
+    });
   } catch (error) {
     const message = (error as Error).message;
     if (message.toLowerCase().includes("timed out")) {
@@ -134,7 +139,12 @@ export async function POST(request: Request) {
 
   try {
     const result = await waitForAnalysisRunJob(job, waitMs);
-    return Response.json(result);
+    return Response.json({
+      accepted: true,
+      jobId: job.id,
+      status: "completed",
+      result,
+    });
   } catch (error) {
     const message = (error as Error).message;
     if (message.toLowerCase().includes("timed out")) {

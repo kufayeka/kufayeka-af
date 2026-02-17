@@ -66,6 +66,7 @@ function buildQueryParameters(inputs: ScriptInput[]) {
 
 export async function GET() {
   const scripts = await prisma.analysisScript.findMany({
+    where: { triggerType: "ON_REQUEST" },
     select: { name: true, inputs: true, description: true },
     orderBy: { name: "asc" },
   });
