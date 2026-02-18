@@ -1,9 +1,24 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../lib/prisma";
 import { resolveTagPath } from "../analysis/_utils";
-import { writeAssetAttributeById, writeAssetAttributeByPath } from "../asset-attributes/_write";
+import {
+  enqueueHistorianWriteJob,
+  waitForHistorianWriteJob,
+} from "../../../lib/historian-write-queue";
 
 export const runtime = "nodejs";
+const DEFAULT_WAIT_MS = 10_000;
+
+function parseWaitMs(raw: unknown) {
+  if (raw === undefined || raw === null || raw === "") {
+    return DEFAULT_WAIT_MS;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_WAIT_MS;
+  }
+  return Math.max(0, Math.floor(parsed));
+}
 
 type HistorianRow = {
   ts: Date;
@@ -86,12 +101,21 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const { searchParams } = new URL(request.url);
+  let waitRaw: unknown = searchParams.get("waitMs") ?? searchParams.get("wait");
+
   const body = (await request.json()) as {
     path?: string;
     attributeId?: string;
     ts?: string | number | Date;
     value?: unknown;
+    waitMs?: number;
+    wait?: number;
   };
+
+  if (waitRaw === undefined || waitRaw === null || waitRaw === "") {
+    waitRaw = body.waitMs ?? body.wait ?? waitRaw;
+  }
 
   if (!body.path && !body.attributeId) {
     return NextResponse.json(
@@ -113,44 +137,45 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid ts value" }, { status: 400 });
   }
 
-  try {
-    const result = body.path
-      ? await writeAssetAttributeByPath({
-          path: body.path,
-          value: body.value,
-          ts: body.ts,
-          recordHistory: true,
-          updateCurrent: false,
-        })
-      : await writeAssetAttributeById({
-          attributeId: body.attributeId as string,
-          value: body.value,
-          ts: body.ts,
-          recordHistory: true,
-          updateCurrent: false,
-        });
-
-    return NextResponse.json(
+  const waitMs = parseWaitMs(waitRaw);
+  const job = await enqueueHistorianWriteJob({
+    items: [
       {
-        success: true,
-        ts: result.ts.toISOString(),
-        assetId: result.resolved.assetId,
-        templateItemId: result.resolved.templateItemId,
-        assetAttributeId: result.resolved.assetAttributeId,
+        path: body.path,
+        attributeId: body.attributeId,
+        value: body.value,
+        ts: body.ts ?? null,
+        updateCurrent: false,
       },
-      { status: 201 }
+    ],
+    source: "api:historian-post",
+  });
+
+  if (waitMs === 0) {
+    return NextResponse.json(
+      { accepted: true, jobId: job.id, status: "queued" },
+      { status: 202 }
     );
+  }
+
+  try {
+    await waitForHistorianWriteJob(job, waitMs);
+    return NextResponse.json({
+      accepted: true,
+      jobId: job.id,
+      status: "completed",
+    });
   } catch (error) {
     const message = (error as Error).message;
-    if (message.includes("Record to update not found")) {
+    if (message.toLowerCase().includes("timed out")) {
       return NextResponse.json(
-        { error: "Attribute value not found" },
-        { status: 404 }
+        { accepted: true, jobId: job.id, status: "queued" },
+        { status: 202 }
       );
     }
     return NextResponse.json(
-      { error: message },
-      { status: message.includes("Value must") || message.includes("Invalid") ? 400 : 404 }
+      { accepted: false, jobId: job.id, status: "failed", error: message },
+      { status: 500 }
     );
   }
 }

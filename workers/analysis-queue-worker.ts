@@ -1,24 +1,12 @@
 import "dotenv/config";
 import { Worker } from "bullmq";
-import IORedis from "ioredis";
 import { ANALYSIS_QUEUE_NAME, type AnalysisRunJobData } from "../lib/analysis-queue";
+import { createRedisConnection, redisAddress } from "../lib/redis-connection";
 
-const redisHost = process.env.REDIS_HOST ?? "127.0.0.1";
-const redisPort = Number(process.env.REDIS_PORT ?? 6379);
-const redisPassword = process.env.REDIS_PASSWORD;
-const redisDb = Number(process.env.REDIS_DB ?? 0);
 const concurrency = Number(process.env.ANALYSIS_QUEUE_CONCURRENCY ?? 20);
 
-const connection = new IORedis({
-  host: redisHost,
-  port: redisPort,
-  password: redisPassword,
-  db: redisDb,
-  maxRetriesPerRequest: null,
-});
-
-connection.on("error", (error) => {
-  console.error(`[analysis-queue] redis connection error: ${error.message}`);
+const connection = createRedisConnection({
+  logPrefix: "[analysis-queue-worker]",
 });
 
 const worker = new Worker<AnalysisRunJobData>(
@@ -63,5 +51,5 @@ worker.on("failed", (job, err) => {
 });
 
 console.log(
-  `[analysis-queue] worker started queue=${ANALYSIS_QUEUE_NAME} redis=${redisHost}:${redisPort}/${redisDb} concurrency=${concurrency}`
+  `[analysis-queue] worker started queue=${ANALYSIS_QUEUE_NAME} redis=${redisAddress} concurrency=${concurrency}`
 );

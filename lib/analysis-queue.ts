@@ -1,5 +1,5 @@
 import { Queue, QueueEvents } from "bullmq";
-import IORedis from "ioredis";
+import { createRedisConnection } from "./redis-connection";
 
 export type AnalysisRunJobData = {
   name: string;
@@ -8,45 +8,111 @@ export type AnalysisRunJobData = {
   body?: unknown;
 };
 
-const redisHost = process.env.REDIS_HOST ?? "127.0.0.1";
-const redisPort = Number(process.env.REDIS_PORT ?? 6379);
-const redisPassword = process.env.REDIS_PASSWORD;
-const redisDb = Number(process.env.REDIS_DB ?? 0);
-
-function createRedisConnection() {
-  const client = new IORedis({
-    host: redisHost,
-    port: redisPort,
-    password: redisPassword,
-    db: redisDb,
-    maxRetriesPerRequest: null,
-  });
-  client.on("error", (error) => {
-    console.error(`[analysis-queue] redis error ${redisHost}:${redisPort}/${redisDb} - ${error.message}`);
-  });
-  return client;
+function envInt(name: string, fallback: number, min = 0) {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(min, Math.floor(parsed));
 }
 
-const queueConnection = createRedisConnection();
-const queueEventsConnection = createRedisConnection();
+function envBool(name: string, fallback: boolean) {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return fallback;
+}
+
+const analysisQueueAttempts = envInt("ANALYSIS_QUEUE_ATTEMPTS", 2, 1);
+const analysisQueueBackoffMs = envInt("ANALYSIS_QUEUE_BACKOFF_MS", 500, 0);
+const analysisQueueKeepCompletedCount = envInt(
+  "ANALYSIS_QUEUE_KEEP_COMPLETED_COUNT",
+  1000,
+  0
+);
+const analysisQueueKeepCompletedAgeSec = envInt(
+  "ANALYSIS_QUEUE_KEEP_COMPLETED_AGE_SEC",
+  86400,
+  0
+);
+const analysisQueueKeepFailedCount = envInt(
+  "ANALYSIS_QUEUE_KEEP_FAILED_COUNT",
+  1000,
+  0
+);
+const analysisQueueKeepFailedAgeSec = envInt(
+  "ANALYSIS_QUEUE_KEEP_FAILED_AGE_SEC",
+  259200,
+  0
+);
+const analysisQueueEventsMaxLen = envInt(
+  "ANALYSIS_QUEUE_EVENTS_MAXLEN",
+  5000,
+  100
+);
+const analysisQueueRemoveCompletedImmediately = envBool(
+  "ANALYSIS_QUEUE_REMOVE_COMPLETED_IMMEDIATELY",
+  false
+);
+const analysisQueueRemoveFailedImmediately = envBool(
+  "ANALYSIS_QUEUE_REMOVE_FAILED_IMMEDIATELY",
+  false
+);
+
+const queueConnection = createRedisConnection({ logPrefix: "[analysis-queue]" });
+const queueEventsConnection = createRedisConnection({
+  logPrefix: "[analysis-queue-events]",
+});
 
 export const ANALYSIS_QUEUE_NAME = "analysis-run-jobs";
 
 export const analysisRunQueue = new Queue<AnalysisRunJobData>(ANALYSIS_QUEUE_NAME, {
   connection: queueConnection,
+  streams: {
+    events: {
+      maxLen: analysisQueueEventsMaxLen,
+    },
+  },
   defaultJobOptions: {
-    removeOnComplete: 1000,
-    removeOnFail: 1000,
-    attempts: 2,
+    removeOnComplete: analysisQueueRemoveCompletedImmediately
+      ? true
+      : {
+          count: analysisQueueKeepCompletedCount,
+          age: analysisQueueKeepCompletedAgeSec,
+        },
+    removeOnFail: analysisQueueRemoveFailedImmediately
+      ? true
+      : {
+          count: analysisQueueKeepFailedCount,
+          age: analysisQueueKeepFailedAgeSec,
+        },
+    attempts: analysisQueueAttempts,
     backoff: {
       type: "exponential",
-      delay: 500,
+      delay: analysisQueueBackoffMs,
     },
   },
 });
 
 export const analysisRunQueueEvents = new QueueEvents(ANALYSIS_QUEUE_NAME, {
   connection: queueEventsConnection,
+  streams: {
+    events: {
+      maxLen: analysisQueueEventsMaxLen,
+    },
+  },
 });
 
 function toSafeJobId(value: string) {

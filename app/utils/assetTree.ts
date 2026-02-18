@@ -10,8 +10,9 @@ export function buildAssetTree(assets: AssetListItem[]): AssetNode[] {
     const attributeNodes: AssetNode[] = (asset.attributes ?? []).map(
       (attribute) => ({
         id: `${asset.id}::${attribute.templateItemId}`,
-        name: `${attribute.templateItem.name}: ${stringifyValue(
-          attribute.value
+        name: `${attribute.templateItem.name}: ${formatAttributeValue(
+          attribute.value,
+          attribute.templateItem.unit
         )}`,
         nodeType: "attribute",
       })
@@ -53,6 +54,15 @@ export function buildAssetTree(assets: AssetListItem[]): AssetNode[] {
 
   sortTree(roots);
   return roots;
+}
+
+function formatAttributeValue(value: unknown, unit?: string | null) {
+  const displayValue = stringifyValue(value);
+  const normalizedUnit = (unit ?? "").trim();
+  if (!normalizedUnit) {
+    return displayValue;
+  }
+  return `${displayValue} ${normalizedUnit}`;
 }
 
 function stringifyValue(value: unknown) {

@@ -1,28 +1,16 @@
 import "dotenv/config";
 import cron, { type ScheduledTask } from "node-cron";
-import IORedis from "ioredis";
 import { prisma } from "../lib/prisma";
 import { enqueueAnalysisRunJobWithId } from "../lib/analysis-queue";
 import { isValidCronExpression } from "../lib/cron-expression";
+import { createRedisConnection, redisAddress } from "../lib/redis-connection";
 
-const redisHost = process.env.REDIS_HOST ?? "127.0.0.1";
-const redisPort = Number(process.env.REDIS_PORT ?? 6379);
-const redisPassword = process.env.REDIS_PASSWORD;
-const redisDb = Number(process.env.REDIS_DB ?? 0);
 const lockTtlMs = Math.max(1000, Number(process.env.CRON_WORKER_LOCK_TTL_MS ?? 180000));
 const reconcileMs = Math.max(1000, Number(process.env.CRON_WORKER_RECONCILE_MS ?? 5000));
 const lockPrefix = "analysis-cron-slot-lock";
 
-const redis = new IORedis({
-  host: redisHost,
-  port: redisPort,
-  password: redisPassword,
-  db: redisDb,
-  maxRetriesPerRequest: null,
-});
-
-redis.on("error", (error) => {
-  console.error(`[analysis-cron-worker] redis error: ${error.message}`);
+const redis = createRedisConnection({
+  logPrefix: "[analysis-cron-worker]",
 });
 
 type CronScript = {
@@ -211,7 +199,7 @@ async function reconcileTick() {
 }
 
 console.log(
-  `[analysis-cron-worker] started redis=${redisHost}:${redisPort}/${redisDb} scheduler=node-cron reconcileMs=${reconcileMs}`
+  `[analysis-cron-worker] started redis=${redisAddress} scheduler=node-cron reconcileMs=${reconcileMs}`
 );
 
 void reconcileTick();

@@ -1,28 +1,16 @@
 import "dotenv/config";
 import { Worker } from "bullmq";
-import IORedis from "ioredis";
 import {
   ATTRIBUTE_WRITE_QUEUE_NAME,
   type AttributeWriteJobData,
 } from "../lib/attribute-write-queue";
 import { writeAssetAttributeByPath } from "../app/api/asset-attributes/_write";
+import { createRedisConnection, redisAddress } from "../lib/redis-connection";
 
-const redisHost = process.env.REDIS_HOST ?? "127.0.0.1";
-const redisPort = Number(process.env.REDIS_PORT ?? 6379);
-const redisPassword = process.env.REDIS_PASSWORD;
-const redisDb = Number(process.env.REDIS_DB ?? 0);
 const concurrency = Number(process.env.ATTRIBUTE_WRITE_QUEUE_CONCURRENCY ?? 100);
 
-const connection = new IORedis({
-  host: redisHost,
-  port: redisPort,
-  password: redisPassword,
-  db: redisDb,
-  maxRetriesPerRequest: null,
-});
-
-connection.on("error", (error) => {
-  console.error(`[attribute-write-queue] redis connection error: ${error.message}`);
+const connection = createRedisConnection({
+  logPrefix: "[attribute-write-queue-worker]",
 });
 
 const worker = new Worker<AttributeWriteJobData>(
@@ -59,5 +47,5 @@ worker.on("failed", (job, err) => {
 });
 
 console.log(
-  `[attribute-write-queue] worker started queue=${ATTRIBUTE_WRITE_QUEUE_NAME} redis=${redisHost}:${redisPort}/${redisDb} concurrency=${concurrency}`
+  `[attribute-write-queue] worker started queue=${ATTRIBUTE_WRITE_QUEUE_NAME} redis=${redisAddress} concurrency=${concurrency}`
 );

@@ -5,6 +5,7 @@ import { runInPool, type PoolWriteItem } from "./_pool";
 import { buildMacroData } from "./_macro-data";
 import { resolveAssetPath, resolveTagPath } from "../analysis/_utils";
 import { writeAssetAttributeByPath } from "../asset-attributes/_write";
+import { enqueueHistorianWriteJob } from "../../../lib/historian-write-queue";
 import { randomUUID } from "crypto";
 
 
@@ -15,6 +16,11 @@ type HistorianQueryWrite = PoolWriteItem & {
   bucket?: string;
   format?: string;
   iso?: boolean;
+};
+type HistorianInsertWrite = PoolWriteItem & {
+  path: string;
+  value: unknown;
+  ts?: string | Date | null;
 };
 
 type EventGenerateWrite = PoolWriteItem & {
@@ -256,7 +262,7 @@ export async function handleAnalysisRun(request: Request, nameOverride?: string)
       ) as HistorianQueryWrite[];
       const historianWrites = writes.filter(
         (write) => write.target === "historian"
-      );
+      ) as HistorianInsertWrite[];
       const eventGenerateWrites = writes.filter(
         (write) => write.target === "eventGenerate"
       ) as EventGenerateWrite[];
@@ -282,20 +288,23 @@ export async function handleAnalysisRun(request: Request, nameOverride?: string)
       }
 
       if (historianWrites.length > 0) {
-        await Promise.all(
-          historianWrites.map(async (write) => {
-            if (!write.path) {
-              throw new Error("Historian path is required");
-            }
-            await writeAssetAttributeByPath({
-              path: write.path,
-              value: write.value,
-              ts: write.ts ?? null,
-              recordHistory: true,
-              updateCurrent: false,
-            });
-          })
-        );
+        const validItems = historianWrites
+          .filter((write) => typeof write.path === "string" && write.path.length > 0)
+          .map((write) => ({
+            path: write.path,
+            value: write.value,
+            ts: write.ts ?? null,
+            updateCurrent: false,
+          }));
+
+        if (validItems.length !== historianWrites.length) {
+          throw new Error("Historian path is required");
+        }
+
+        await enqueueHistorianWriteJob({
+          items: validItems,
+          source: `analysis:${name}`,
+        });
       }
 
       if (eventGenerateWrites.length > 0) {
