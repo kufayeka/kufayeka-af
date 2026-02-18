@@ -551,7 +551,7 @@ export default function Home() {
     const data = (await response.json()) as { assets: AssetListItem[] };
     setAssets(data.assets);
 
-    if (selectedId) {
+    if (typeof selectedId === "string" && selectedId.length > 0) {
       setSelectedAssetId(selectedId);
     } else if (selectedAssetId && !data.assets.some((a) => a.id === selectedAssetId)) {
       setSelectedAssetId(null);
@@ -612,6 +612,7 @@ export default function Home() {
       } catch (error) {
         console.error(error);
         setErrorMessage("Gagal memuat detail asset.");
+        setSelectedAssetId(null);
       }
     };
 
@@ -665,6 +666,7 @@ export default function Home() {
           onSearchChange={setAssetSearch}
           onToggle={handleToggle}
           onSelect={setSelectedAssetId}
+          onRefresh={refreshAssets}
         />
 
         <Box

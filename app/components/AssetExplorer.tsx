@@ -1,4 +1,5 @@
-import { Box, Divider, List, TextField, Typography } from "@mui/material";
+import { Box, Divider, List, TextField, Typography, IconButton } from "@mui/material";
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { AssetTreeItem } from "./AssetTreeItem";
 import type { AssetNode } from "../data/assetData";
 
@@ -10,6 +11,7 @@ export type AssetExplorerProps = {
   onSearchChange: (value: string) => void;
   onToggle: (id: string) => void;
   onSelect: (id: string) => void;
+  onRefresh: () => void;
 };
 
 export function AssetExplorer({
@@ -20,6 +22,7 @@ export function AssetExplorer({
   onSearchChange,
   onToggle,
   onSelect,
+  onRefresh,
 }: AssetExplorerProps) {
   return (
     <Box
@@ -36,9 +39,14 @@ export function AssetExplorer({
       aria-label="Asset explorer"
     >
       <Box sx={{ p: 2 }}>
-        <Typography variant="subtitle1" gutterBottom>
-          Asset Explorer
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Typography variant="subtitle1" gutterBottom>
+            Asset Explorer
+          </Typography>
+          <IconButton onClick={() => onRefresh()} aria-label="refresh asset tree">
+            <RefreshIcon />
+          </IconButton>
+        </Box>
         <TextField
           fullWidth
           size="small"

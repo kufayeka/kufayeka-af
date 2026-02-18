@@ -38,7 +38,12 @@ export function buildAssetTree(assets: AssetListItem[]): AssetNode[] {
   });
 
   const sortTree = (list: AssetNode[]) => {
-    list.sort((a, b) => a.name.localeCompare(b.name));
+    list.sort((a, b) => {
+      if (a.nodeType !== b.nodeType) {
+        return a.nodeType === "attribute" ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
     list.forEach((item) => {
       if (item.children?.length) {
         sortTree(item.children);

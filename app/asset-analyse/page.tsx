@@ -37,6 +37,7 @@ import AddIcon from "@mui/icons-material/Add";
 import CheckIcon from "@mui/icons-material/Check";
 import { AppHeader } from "../components/AppHeader";
 import type { AssetListItem, TemplateItem } from "../data/assetData";
+import { ScriptAnalysesExplorer } from "../components/ScriptAnalysesExplorer";
 
 const CodeMirror = dynamic(() => import("@uiw/react-codemirror"), {
   ssr: false,
@@ -139,7 +140,6 @@ export default function AssetAnalysePage() {
     cronId: "",
   });
   const [bindings, setBindings] = useState<AnalysisBindingRow[]>([]);
-  const [scriptSearch, setScriptSearch] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [assets, setAssets] = useState<AssetListItem[]>([]);
 
@@ -155,18 +155,6 @@ export default function AssetAnalysePage() {
       prev.map((binding) => resolveLegacyBinding(binding, attributeOptions))
     );
   }, [attributeOptions]);
-
-  const filteredScripts = useMemo(() => {
-    if (!scriptSearch.trim()) {
-      return scripts;
-    }
-    const keyword = scriptSearch.trim().toLowerCase();
-    return scripts.filter((item) =>
-      [item.name, item.description]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(keyword))
-    );
-  }, [scriptSearch, scripts]);
 
   const selectedScript = useMemo(
     () => scripts.find((item) => item.id === selectedScriptId) ?? null,
@@ -394,6 +382,15 @@ export default function AssetAnalysePage() {
     setAssets(data.assets);
   };
 
+  const refreshAll = async () => {
+    try {
+        await Promise.all([refreshScripts(), refreshCrons()]);
+    } catch (error) {
+        console.error(error);
+        setErrorMessage("Gagal memuat data analysis.");
+    }
+  };
+
   useEffect(() => {
     const bootstrap = async () => {
       try {
@@ -469,64 +466,13 @@ export default function AssetAnalysePage() {
       </Box>
       {activeTab === "scripts" ? (
       <Box sx={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <Box
-          component="aside"
-          sx={{
-            width: "30%",
-            borderRight: "1px solid",
-            borderColor: "divider",
-            height: "100%",
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-          }}
-          aria-label="Analysis explorer"
-        >
-          <Box sx={{ p: 2 }}>
-            <Typography variant="subtitle1" gutterBottom>
-              Analysis Explorer
-            </Typography>
-            <TextField
-              fullWidth
-              size="small"
-              label="Cari analysis"
-              placeholder="Ketik nama analysis"
-              aria-label="Cari analysis"
-              title="Cari analysis"
-              value={scriptSearch}
-              onChange={(event) => setScriptSearch(event.target.value)}
-            />
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 2 }}>
-              <Button
-                variant="outlined"
-                aria-label="Buat analysis baru"
-                title="Buat analysis baru"
-                onClick={resetForm}
-              >
-                New Analysis
-              </Button>
-              <Button
-                variant="contained"
-                aria-label="Simpan analysis"
-                title="Simpan analysis"
-                onClick={handleSave}
-              >
-                Save
-              </Button>
-            </Stack>
-          </Box>
-          <Divider />
-          <Box sx={{ flex: 1, overflow: "auto" }}>
-            <Stack spacing={0.5} sx={{ p: 2 }} aria-label="Daftar analysis">
-              {renderScriptHierarchy({
-                scripts: filteredScripts,
-                crons,
-                selectedScriptId,
-                onSelect: handleSelectScript,
-              })}
-            </Stack>
-          </Box>
-        </Box>
+        <ScriptAnalysesExplorer
+            scripts={scripts}
+            crons={crons}
+            selectedScriptId={selectedScriptId}
+            onSelectScript={handleSelectScript}
+            onRefresh={refreshAll}
+        />
 
         <Box
           component="section"
@@ -1275,103 +1221,6 @@ export default function AssetAnalysePage() {
   );
 }
 
-type HierarchyArgs = {
-  scripts: AnalysisScript[];
-  crons: AnalysisCron[];
-  selectedScriptId: string | null;
-  onSelect: (script: AnalysisScript) => void;
-};
-
-function renderScriptHierarchy({
-  scripts,
-  crons,
-  selectedScriptId,
-  onSelect,
-}: HierarchyArgs) {
-  const scriptsByCron = new Map<string | null, AnalysisScript[]>();
-  scripts.forEach((script) => {
-    const key = script.triggerType === "SCHEDULED" ? script.cronId : null;
-    const list = scriptsByCron.get(key) ?? [];
-    list.push(script);
-    scriptsByCron.set(key, list);
-  });
-
-  const children = new Map<string | null, AnalysisCron[]>();
-  crons.forEach((cron) => {
-    const list = children.get(null) ?? [];
-    list.push(cron);
-    children.set(null, list);
-  });
-
-  const renderScriptCard = (item: AnalysisScript, depth = 0) => (
-    <Card
-      key={item.id}
-      variant="outlined"
-      sx={{
-        ml: depth * 2,
-        cursor: "pointer",
-        borderColor: item.id === selectedScriptId ? "primary.main" : "divider",
-        bgcolor: item.id === selectedScriptId ? "action.selected" : "background.paper",
-        "&:hover": {
-          borderColor: "primary.light",
-          bgcolor: "action.hover",
-        },
-      }}
-      onClick={() => onSelect(item)}
-    >
-      <CardContent sx={{ p: 1, "&:last-child": { pb: 1 } }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Box>
-            <Typography variant="body2" fontWeight="bold">
-              {item.name}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {item.triggerType === "SCHEDULED" ? "Scheduled" : "On Request"}
-            </Typography>
-          </Box>
-          {item.id === selectedScriptId ? (
-            <CheckIcon color="primary" fontSize="small" />
-          ) : null}
-        </Stack>
-      </CardContent>
-    </Card>
-  );
-
-  const renderCronNode = (cron: AnalysisCron, depth: number) => {
-    const scheduledScripts = (scriptsByCron.get(cron.id) ?? []).filter(
-      (item) => item.triggerType === "SCHEDULED"
-    );
-    return (
-      <Box key={cron.id} sx={{ ml: depth * 2 }}>
-        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
-          {cron.name} ({cron.cronExpression}) {cron.isRunning ? "RUN" : "STOP"}
-        </Typography>
-        <Stack spacing={0.5}>
-          {scheduledScripts.map((item) => renderScriptCard(item, depth + 1))}
-        </Stack>
-      </Box>
-    );
-  };
-
-  const rootCrons = children.get(null) ?? [];
-  const onRequestScripts = (scriptsByCron.get(null) ?? []).filter(
-    (item) => item.triggerType !== "SCHEDULED"
-  );
-
-  return (
-    <>
-      <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
-        On Request
-      </Typography>
-      {onRequestScripts.map((item) => renderScriptCard(item))}
-      <Divider sx={{ my: 1 }} />
-      <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
-        Scheduled By Cron
-      </Typography>
-      {rootCrons.map((cron) => renderCronNode(cron, 0))}
-    </>
-  );
-}
 
 function sanitizeBindingsForTriggerType(
   bindings: AnalysisBindingRow[],
