@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
+import { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
 
@@ -30,13 +31,49 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
-  await prisma.assetAttributeTemplateItem.deleteMany({
-    where: { assetAttributeTemplateId: id },
-  });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.assetAttributeHistorian.deleteMany({
+        where: {
+          assetAttribute: {
+            templateItem: {
+              assetAttributeTemplateId: id,
+            },
+          },
+        },
+      });
 
-  await prisma.assetAttributeTemplate.delete({
-    where: { id },
-  });
+      await tx.assetAttribute.deleteMany({
+        where: {
+          templateItem: {
+            assetAttributeTemplateId: id,
+          },
+        },
+      });
+
+      await tx.assetAttributeTemplateItem.deleteMany({
+        where: { assetAttributeTemplateId: id },
+      });
+
+      await tx.assetAttributeTemplate.delete({
+        where: { id },
+      });
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2003"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Template masih direferensikan data lain (mis. asset). Lepaskan relasi dulu sebelum delete.",
+        },
+        { status: 409 }
+      );
+    }
+    throw error;
+  }
 
   return NextResponse.json({ success: true });
 }

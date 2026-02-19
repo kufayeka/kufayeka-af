@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
+import { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
 
@@ -112,13 +113,39 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
-  await prisma.assetAttribute.deleteMany({
-    where: { templateItemId: id },
-  });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.assetAttributeHistorian.deleteMany({
+        where: {
+          assetAttribute: {
+            templateItemId: id,
+          },
+        },
+      });
 
-  await prisma.assetAttributeTemplateItem.delete({
-    where: { id },
-  });
+      await tx.assetAttribute.deleteMany({
+        where: { templateItemId: id },
+      });
+
+      await tx.assetAttributeTemplateItem.delete({
+        where: { id },
+      });
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2003"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Template item masih direferensikan data lain. Hapus dependensi terkait dulu.",
+        },
+        { status: 409 }
+      );
+    }
+    throw error;
+  }
 
   return NextResponse.json({ success: true });
 }

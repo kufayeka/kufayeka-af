@@ -4,13 +4,16 @@ import {
   Card,
   CardContent,
   FormControl,
+  IconButton,
   InputLabel,
   MenuItem,
   Select,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import type { SelectChangeEvent } from "@mui/material";
 import type {
   AssetAttributeInput,
@@ -52,6 +55,14 @@ export function AssetManagement({
   onDeleteAsset,
   onSaveAttributes,
 }: AssetManagementProps) {
+  const handleCopyAttributeId = async (attributeId: string) => {
+    try {
+      await navigator.clipboard.writeText(attributeId);
+    } catch (error) {
+      console.error("Failed to copy attribute id", error);
+    }
+  };
+
   return (
     <Stack spacing={2}>
       <Card variant="outlined">
@@ -185,36 +196,67 @@ export function AssetManagement({
               <Box component="thead">
                 <Box component="tr">
                   <Box component="th">Attribute</Box>
+                  <Box component="th">Attribute ID</Box>
                   <Box component="th">Tipe</Box>
                   <Box component="th">Unit</Box>
                   <Box component="th">Value</Box>
                 </Box>
               </Box>
               <Box component="tbody">
-                {attributeValues.map((attribute) => (
-                  <Box component="tr" key={attribute.templateItemId}>
-                    <Box component="td">{attribute.templateItem.name}</Box>
-                    <Box component="td">
-                      {formatAttributeType(attribute.templateItem.dataType)}
+                {attributeValues.map((attribute) => {
+                  const attributeId =
+                    attribute.id && !attribute.id.startsWith("temp-")
+                      ? attribute.id
+                      : "";
+
+                  return (
+                    <Box component="tr" key={attribute.templateItemId}>
+                      <Box component="td">{attribute.templateItem.name}</Box>
+                      <Box component="td">
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                          <Box
+                            component="span"
+                            sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}
+                          >
+                            {attributeId || "-"}
+                          </Box>
+                          <Tooltip title={attributeId ? "Copy ID" : "ID belum tersedia"}>
+                            <span>
+                              <IconButton
+                                size="small"
+                                aria-label={`Copy attribute id ${attribute.templateItem.name}`}
+                                title={`Copy attribute id ${attribute.templateItem.name}`}
+                                disabled={!attributeId}
+                                onClick={() => handleCopyAttributeId(attributeId)}
+                              >
+                                <ContentCopyIcon fontSize="inherit" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        </Stack>
+                      </Box>
+                      <Box component="td">
+                        {formatAttributeType(attribute.templateItem.dataType)}
+                      </Box>
+                      <Box component="td">{attribute.templateItem.unit || "-"}</Box>
+                      <Box component="td">
+                        <TextField
+                          size="small"
+                          label="Value"
+                          aria-label={`Nilai ${attribute.templateItem.name}`}
+                          title={`Nilai ${attribute.templateItem.name}`}
+                          value={attribute.value ?? ""}
+                          onChange={(event) =>
+                            onAttributeValueChange(
+                              attribute.templateItemId,
+                              event.target.value
+                            )
+                          }
+                        />
+                      </Box>
                     </Box>
-                    <Box component="td">{attribute.templateItem.unit || "-"}</Box>
-                    <Box component="td">
-                      <TextField
-                        size="small"
-                        label="Value"
-                        aria-label={`Nilai ${attribute.templateItem.name}`}
-                        title={`Nilai ${attribute.templateItem.name}`}
-                        value={attribute.value ?? ""}
-                        onChange={(event) =>
-                          onAttributeValueChange(
-                            attribute.templateItemId,
-                            event.target.value
-                          )
-                        }
-                      />
-                    </Box>
-                  </Box>
-                ))}
+                  );
+                })}
               </Box>
             </Box>
             <Button
